@@ -20,6 +20,8 @@ Kho lưu trữ toàn bộ mã nguồn, kịch bản tự động hóa (`.sh`, `.
 
 ## 📚 Tài Liệu Hướng Dẫn & Cẩm Nang
 * **[Cẩm Nang Toàn Diện Chinh Phục Lab TCP/IP](cam_nang.md)**: Hướng dẫn từ A-Z về kiến trúc mạng, câu hỏi vấn đáp và mẹo thực hành trên Linux Network Namespaces (`ip netns`).
+* **[Hướng Dẫn Triển Khai Trên 2 Máy Thật](LabLoHongBaoMatTCPIP_2MayThat/HUONG_DAN_TRIEN_KHAI_2_MAY_THAT.md)**: Hướng dẫn chi tiết chạy thực nghiệm trên 2 máy tính vật lý kết nối Wi-Fi / Hotspot.
+* **[Lưu Ý Kỹ Thuật (VMware Win 11 vs Boot Ổ Rời)](LabLoHongBaoMatTCPIP_2MayThat/LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md)**: Cấu hình card Bridged, tên interface `eth0` vs `wlan0`, phân vai Server/Attacker và xử lý xung đột cổng 53.
 
 ---
 
@@ -29,3 +31,4 @@ Kho lưu trữ toàn bộ mã nguồn, kịch bản tự động hóa (`.sh`, `.
 * **Chế tạo gói tin:** Python 3 & thư viện `Scapy`
 * **Giám sát lưu lượng:** `tcpdump`, `wireshark`
 * **Dịch vụ mạng:** BIND9, Unbound Resolver, Netcat (`nc`), Socket TCP/UDP Python
+
