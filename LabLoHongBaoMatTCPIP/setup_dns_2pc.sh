@@ -99,3 +99,4 @@ elif [ "$ROLE" == "client" ]; then
     echo "    sudo ip netns exec client dig @10.0.0.3 www.lab.test +dnssec"
     echo "=================================================================="
 fi
+

@@ -265,12 +265,13 @@ Báo cáo cung cấp **2 phương án triển khai hoàn chỉnh**:
 ### PHƯƠNG ÁN 1: TRIỂN KHAI TRÊN 2 MÁY THẬT KALI LINUX (CÙNG KẾT NỐI WI-FI)
 
 #### Thiết lập ban đầu:
-* **Máy 1 (Client truy vấn `dig`)**: IP Wi-Fi (ví dụ `192.168.1.50`), card `wlan0`.
-* **Máy 2 (DNS Infrastructure Server)**: IP Wi-Fi (ví dụ `192.168.1.100`), card `wlan0`.
+* **Mô hình:** 2 máy laptop vật lý khác nhau cùng chạy Kali Linux trên VMware Workstation ở chế độ **Bridged** kết nối cùng mạng Wi-Fi. Trong Kali Linux của VMware, card mạng kết nối hiển thị là **`eth0`** (hoặc `ens33`).
+* **Máy 1 (Client truy vấn `dig`)**: IP máy ảo (ví dụ `192.168.1.50`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
+* **Máy 2 (DNS Infrastructure Server)**: IP máy ảo (ví dụ `192.168.1.100`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
 * **Kiến trúc dịch vụ trên Máy 2**:
   * Authoritative Server (BIND9 có DNSSEC): Lắng nghe tại `127.0.0.1:5353`.
   * Rogue Server (BIND9 giả mạo KHÔNG DNSSEC): Lắng nghe tại `127.0.0.1:5354`.
-  * Validating Recursive Resolver (Unbound): Lắng nghe tại IP Wi-Fi thật `192.168.1.100:53` (hoặc `0.0.0.0:53`), sẵn sàng phục vụ và kiểm thực cho Máy 1 qua sóng Wi-Fi.
+  * Validating Recursive Resolver (Unbound): Lắng nghe tại IP mạng thật `192.168.1.100:53` (hoặc `0.0.0.0:53`), sẵn sàng phục vụ và kiểm thực cho Máy 1 qua sóng Wi-Fi.
 
 #### Trình tự các bước thực hiện:
 
@@ -697,26 +698,28 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 ### KỊCH BẢN A: DÀNH CHO QUAY VIDEO TRÊN 2 MÁY THẬT (QUA MẠNG WI-FI)
 
 > **Bố cục đề xuất khi quay video:**
-> * **Máy 1 (Bên trái):** Kali Linux - Máy Client đóng vai người dùng kiểm thử (IP ví dụ: `192.168.1.50`, card `wlan0`).
-> * **Máy 2 (Bên phải):** Kali Linux - Máy Hạ tầng DNS (BIND9 + Unbound Resolver) (IP ví dụ: `192.168.1.100`, card `wlan0`).
+> * **Máy 1 (Bên trái):** Kali Linux trên VMware Bridged - Máy Client đóng vai người dùng kiểm thử (IP ví dụ: `192.168.1.50`, card `eth0`).
+> * **Máy 2 (Bên phải):** Kali Linux trên VMware Bridged - Máy Hạ tầng DNS (BIND9 + Unbound Resolver) (IP ví dụ: `192.168.1.100`, card `eth0`).
 > * *Nguyên tắc:* Gõ lệnh tới đâu, giải thích ngay chức năng và ý nghĩa kỹ thuật tới đó.
 
 #### [0:00 - 0:40] Mở đầu & Giới thiệu đề tài
 * **Lời thoại:**
-  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 07, cũng là bài lab cuối cùng trong chuỗi chuyên đề An toàn Giao thức TCP/IP: Triển khai và Kiểm thực Hệ thống Tên miền An toàn DNSSEC (DNS Security Extensions) trực tiếp trên 2 máy tính vật lý Kali Linux cùng kết nối mạng Wi-Fi. Hệ thống DNS truyền thống hoạt động trên nền UDP không có xác thực, rất dễ bị kẻ tấn công đầu độc bộ nhớ đệm hoặc giả mạo IP phản hồi. DNSSEC giải quyết triệt để hiểm họa này bằng cách sử dụng mật mã học khóa bất đối xứng để niêm phong chữ ký số lên từng bản ghi tên miền, giúp máy chủ phân giải phát hiện và chặn đứng mọi hành vi giả mạo dữ liệu!"*
+  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 07, cũng là bài lab cuối cùng trong chuỗi chuyên đề An toàn Giao thức TCP/IP: Triển khai và Kiểm thực Hệ thống Tên miền An toàn DNSSEC (DNS Security Extensions) trực tiếp trên 2 máy tính vật lý Kali Linux chạy VMware chế độ Bridged cùng kết nối chung mạng Wi-Fi. Hệ thống DNS truyền thống hoạt động trên nền UDP không có xác thực, rất dễ bị kẻ tấn công đầu độc bộ nhớ đệm hoặc giả mạo IP phản hồi. DNSSEC giải quyết triệt để hiểm họa này bằng cách sử dụng mật mã học khóa bất đối xứng để niêm phong chữ ký số lên từng bản ghi tên miền, giúp máy chủ phân giải phát hiện và chặn đứng mọi hành vi giả mạo dữ liệu!"*
 
-#### [0:40 - 1:20] Bước 1: Kiểm tra IP Wi-Fi và chuẩn bị cấu hình trên Máy 2
+#### [0:40 - 1:20] Bước 1: Kiểm tra IP và chuẩn bị cấu hình trên Máy 2
 * **Thao tác 1 (Trên Máy 2 - Kiểm tra IP & Khởi tạo file cấu hình DNSSEC):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
+  # Hoặc xem bảng chi tiết card mạng:
+  ip -br addr
   sudo bash setup_dnssec_configs_real.sh 192.168.1.100
   ```
   * **Lời thoại:**
-    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP Wi-Fi là `192.168.1.100`. Em chạy script `sudo bash setup_dnssec_configs_real.sh 192.168.1.100`. Kịch bản này tự động cấu hình quyền thư mục, xử lý AppArmor và tạo các file cấu hình cho BIND9 chính chủ có DNSSEC tại cổng 5353 và BIND9 giả mạo tại cổng 5354."*
+    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP bằng lệnh `hostname -I` (hoặc `ip -br addr`). Do chạy trên VMware Bridged, card mạng là `eth0` và có IP là `192.168.1.100`. Em chạy script `sudo bash setup_dnssec_configs_real.sh 192.168.1.100`. Kịch bản này tự động cấu hình quyền thư mục, xử lý AppArmor và tạo các file cấu hình cho BIND9 chính chủ có DNSSEC tại cổng 5353 và BIND9 giả mạo tại cổng 5354."*
 
 * **Thao tác 2 (Trên Máy 1 - Kiểm tra IP & Ping sang Máy 2):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
   ping -c 2 192.168.1.100
   ```
   * **Lời thoại:**

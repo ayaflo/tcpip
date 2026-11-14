@@ -1,240 +1,292 @@
-# HƯỚNG DẪN TRIỂN KHAI 7 BÀI LAB TRÊN 2 LAPTOP THẬT (VMWARE KALI LINUX QUA WIFI)
+# HƯỚNG DẪN TRIỂN KHAI TOÀN DIỆN TRÊN 2 MÁY THẬT (KALI LINUX — CÙNG MẠNG WI-FI)
 
-> **Mục đích:** Hướng dẫn chi tiết từ A-Z cách chia vai và thực hành chuỗi 7 bài lab an toàn mạng TCP/IP trên **2 máy tính Laptop vật lý riêng biệt**, cùng chạy máy ảo Kali Linux trên VMware và kết nối chung một mạng Wi-Fi.  
-> Giúp giảng viên quan sát trực tiếp gói tin mạng và các cuộc tấn công trao đổi qua sóng Wi-Fi thực tế giữa hai máy tính!
+> [!IMPORTANT]
+> **ĐẶC BIỆT KHI TRIỂN KHAI TRÊN 2 LAPTOP CHẠY VMWARE (HOẶC BOOT KALI Ổ RỜI):**
+> Hãy đọc ngay tài liệu bổ sung [LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md](LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md) để:
+> 1. Chuyển card mạng VMware sang **Bridged** (cấm dùng NAT) và chọn đích danh Card Wi-Fi thật của Laptop Host.
+> 2. Card mạng trong VMware là **`eth0`** (hoặc `ens33`) — **hoàn toàn không có `wlan0`**.
+> 3. Xem IP chuẩn xác và nhanh nhất bằng lệnh **`hostname -I`** hoặc **`ip -br a`**.
+> 4. Tránh bị chặn bởi router bằng cách dùng **Wi-Fi Hotspot** trực tiếp giữa 2 máy.
+> 5. Tắt `systemd-resolved` trước khi chạy Lab 07.
 
----
-
-## I. TỔNG QUAN KIẾN TRÚC MẠNG 2 LAPTOP
-
-### 1. Thách thức lớn khi chạy trên 2 máy thật qua Wi-Fi
-Khi triển khai các bài lab bảo mật TCP/IP giữa 2 máy thật qua Wi-Fi, sinh viên thường gặp các rào cản chí mạng:
-1. **Router Wi-Fi chặn IP Spoofing**: Các router Wi-Fi hiện đại bật tính năng chống giả mạo IP nguồn (uRPF/Anti-spoofing). Nếu bạn giả mạo IP `10.0.0.77` hay `10.0.0.200`, router Wi-Fi sẽ tự động hủy (drop) gói tin ngay lập tức.
-2. **Router Wi-Fi chặn Broadcast**: Trong Lab 04 (Smurf), router Wi-Fi cấm phát gói ping tới địa chỉ broadcast mạng LAN (`.255`).
-3. **AP Isolation (Cách ly máy khách)**: Nhiều mạng Wi-Fi trường học hoặc quán cà phê bật chế độ AP Isolation, ngăn không cho 2 laptop nhìn thấy nhau.
-
-### 2. "Vũ khí công nghiệp": Công nghệ VXLAN Overlay (RFC 7348)
-Để giải quyết triệt để 100% các rào cản trên mà **không cần sửa một dòng mã nguồn Python Scapy nào**:
-* Hệ thống sử dụng công nghệ **VXLAN (Virtual Extensible LAN)** chuẩn công nghiệp của Linux.
-* **Nguyên lý:** Toàn bộ khung mạng ảo Layer 2 của bài lab (bao gồm cả các gói tin dị dạng, IP giả mạo `10.0.0.x`, gói broadcast) được đóng gói nguyên vẹn bên trong các gói tin **UDP chuẩn (cổng 4789)**.
-* **Hiệu quả:**
-  * Router Wi-Fi chỉ nhìn thấy hai laptop đang gửi các gói UDP bình thường cho nhau, **hoàn toàn không thể can thiệp hay chặn đứng**.
-  * Hai máy ảo Kali Linux trên 2 laptop được nối thông với nhau như thể cắm chung một sợi dây cáp mạng LAN vật lý!
-  * Toàn bộ các địa chỉ IP gốc trong giáo trình (`10.0.0.1`, `10.0.0.2`, `10.0.0.200`, `10.0.0.66`...) được giữ nguyên vẹn 100%!
-
-```mermaid
-flowchart LR
-    subgraph Laptop1["Laptop 1 (Nạn nhân / Hạ tầng)"]
-        VM1["Kali Linux VM 1<br/>(IP Wi-Fi: 192.168.1.10)"]
-        Br1["Switch ảo br0<br/>(Chứa Victim, Amp, Server...)"]
-        VX1["vxlan0 (Port UDP 4789)"]
-        Br1 <--> VX1
-    end
-
-    subgraph WiFiNet["Sóng Wi-Fi / Router chung"]
-        WiFiAir(("Truyền qua Wi-Fi<br/>Gói UDP 4789"))
-    end
-
-    subgraph Laptop2["Laptop 2 (Kẻ tấn công / Client)"]
-        VX2["vxlan0 (Port UDP 4789)"]
-        VM2["Kali Linux VM 2<br/>(IP Wi-Fi: 192.168.1.20)"]
-        AtkNode["Node Kẻ tấn công<br/>(atk: 10.0.0.100 / 10.0.0.66)"]
-        VX2 <--> AtkNode
-    end
-
-    VX1 <==>|Gói UDP đóng gói L2| WiFiAir <==>|Gói UDP đóng gói L2| VX2
-```
+Tài liệu này hướng dẫn chi tiết cách tổ chức, chuẩn bị mạng và thực thi các bài thực hành trong chuyên đề **An toàn Giao thức TCP/IP** khi triển khai trên **2 máy tính vật lý thật**, cả hai đều cài đặt **Kali Linux** (trên máy ảo VMware Bridged hoặc Bare-metal) và kết nối **chung một mạng Wi-Fi**.
 
 ---
 
-## II. THIẾT LẬP MÔI TRƯỜNG KẾT NỐI BAN ĐẦU
+## I. BẢNG PHÂN LOẠI KHẢ NĂNG TRIỂN KHAI TRÊN 2 MÁY THẬT
 
-### Bước 1: Kết nối Wi-Fi giữa 2 Laptop
-> [!TIP]
-> **Mẹo hay nhất để không bị chặn mạng trường:**
-> Hãy dùng **1 điện thoại bật tính năng "Phát Wi-Fi" (Mobile Hotspot)** cho cả 2 chiếc laptop cùng kết nối vào, HOẶC dùng 1 chiếc laptop Windows bật **"Mobile Hotspot"** trong Windows Settings để chiếc laptop kia bắt vào. Mạng này cực kỳ sạch, ổn định và không có tường lửa chặn.
+Dựa trên nguyên lý hoạt động của các tầng giao thức mạng và giới hạn vật lý của sóng vô tuyến Wi-Fi (802.11), các bài lab được phân loại như sau:
 
-### Bước 2: Cấu hình card mạng trên VMware Workstation
-Trên cả 2 laptop:
-1. Mở VMware Workstation $\rightarrow$ Chọn máy ảo Kali Linux.
-2. Vào **VM $\rightarrow$ Settings $\rightarrow$ Network Adapter**.
-3. Chọn chế độ: **Bridged (Connected directly to the physical network)**.
-   * *Khuyên dùng:* Tích chọn thêm ô **"Replicate physical network connection state"**.
-4. Khởi động cả 2 máy ảo Kali Linux lên.
+| Bài Lab | Tên bài thực hành | Khả năng chạy trên 2 máy thật Wi-Fi | Lý do kỹ thuật & Giải pháp triển khai |
+| :---: | :--- | :---: | :--- |
+| **Lab 01** | **TCP Sequence Number Prediction & Spoofing** | **RẤT TỐT (100%)** | • Phần 1 (Lấy mẫu ISN): Máy 1 gửi SYN qua Wi-Fi tới cổng 9000 của Máy 2, trích xuất ISN và phân tích ngẫu nhiên RFC 6528.<br/>• Phần 2 (Giả mạo IP): Script được nâng cấp tự động phản hồi ARP cho IP giả mạo, cho phép Máy 2 gửi SYN/ACK về Máy 1 qua Wi-Fi trơn tru. |
+| **Lab 02** | **IP Source Routing (SSRR)** | **TỐT (Cần lưu ý AP)** | Hai máy cùng subnet Wi-Fi trao đổi trực tiếp ở Layer 2 qua AP Bridge. Máy 2 bật `accept_source_route=1`. Máy 1 gửi gói SSRR ép phản hồi về máy mình.<br/>*(Mẹo: Nếu Router Wi-Fi chặn IP options, dùng Hotspot kết nối trực tiếp).* |
+| **Lab 03** | **ICMP Tunneling (Kênh ngầm dữ liệu)** | **HOÀN HẢO (100%)** | **Bài lab ấn tượng và thực tế nhất trên 2 laptop!** Máy 2 chặn TCP bằng iptables, chạy `icmp_server.py`. Máy 1 chạy `icmp_client.py` tuồn dữ liệu mật qua ping Wi-Fi. Máy 2 thu thập và tái tạo dữ liệu mật 71 bytes tức thì! |
+| **Lab 04** | **Smurf Attack (Broadcast Amplification DoS)** | **HOÀN HẢO (MÔ HÌNH 2 LAPTOP QUA VXLAN)** | • **Giải pháp đột phá:** Máy 1 dựng hạ tầng mạng gồm Nạn nhân `vic` (`10.0.0.200`) và 3 trạm khuếch đại `amp1..amp3` nối vào Switch `br0`. Đồng thời mở kết nối VXLAN qua Wi-Fi.<br/>• Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.100`) tham gia mạng qua Wi-Fi.<br/>• **Hiện tượng thực tế:** Máy 2 bấm nút tấn công, màn hình Máy 1 lập tức hứng trọn bão 30 gói tin dội về từ 3 trạm khuếch đại! Không bao giờ bị router Wi-Fi chặn gói tin! |
+| **Lab 05** | **ICMP Redirect Attack (Route Hijacking)** | **HOÀN HẢO (MÔ HÌNH 2 LAPTOP QUA VXLAN)** | • **Giải pháp đột phá:** Máy 1 dựng Gateway `gw` (`10.0.0.1`), Nạn nhân `vic` (`10.0.0.2`), và Server đích `dst` (`10.0.1.5`).<br/>• Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.66`) cùng tham gia mạng qua VXLAN.<br/>• **Hiện tượng thực tế:** Máy 2 bắn gói ICMP Redirect qua Wi-Fi sang Máy 1 làm bẻ lái tuyến đường của Nạn nhân. Khi Máy 1 ping máy đích, toàn bộ gói tin bay qua sóng Wi-Fi sang màn hình tcpdump của Máy 2! |
+| **Lab 06** | **Teardrop Attack (IP Fragmentation Overlap)** | **HOÀN HẢO (100%)** | Máy 1 gửi 2 mảnh IP chồng lấn 16 bytes qua Wi-Fi tới IP của Máy 2. Kernel của Máy 2 nhận mảnh, xử lý tái hợp, phát hiện lỗi đè và tăng bộ đếm `ReasmFails` lên 1 trên card `eth0`, máy vẫn sống sót bình thường! |
+| **Lab 07** | **DNSSEC (Xác thực tên miền an toàn)** | **RẤT TỐT (Mô hình Client - Server)** | Máy 2 đóng vai Máy chủ DNS nội bộ (chạy BIND9 có ký DNSSEC và Resolver Unbound). Máy 1 đóng vai Client kết nối Wi-Fi, dùng `dig` truy vấn nhận cờ `ad` và chữ ký `RRSIG`. Khi chuyển sang máy giả mạo `rogue` $\rightarrow$ nhận lỗi `SERVFAIL`! |
 
-### Bước 3: Lấy địa chỉ IP Wi-Fi của mỗi máy Kali Linux
-Mở terminal trên từng máy Kali Linux và chạy:
+---
+
+## II. THIẾT LẬP MẠNG CHO 2 MÁY THẬT
+
+### 1. Phân vai 2 máy tính
+* **MÁY 1 (Attacker / Client):**
+  * Đóng vai: Kẻ tấn công hoặc Máy khách gửi truy vấn.
+  * Card mạng: **`eth0`** (nếu dùng VMware Bridged) hoặc `wlan0` (nếu boot bare-metal).
+  * Giả sử có IP Wi-Fi: `IP_MAY_1` (ví dụ `192.168.1.100`).
+* **MÁY 2 (Victim / Server / Host):**
+  * Đóng vai: Nạn nhân hoặc Máy chủ dịch vụ (TCP Server, ICMP Receiver, DNS Server, Host Lab 4 & 5).
+  * Card mạng: **`eth0`** (nếu dùng VMware Bridged) hoặc `wlan0` (nếu boot bare-metal).
+  * Giả sử có IP Wi-Fi: `IP_MAY_2` (ví dụ `192.168.1.105`).
+
+---
+
+### 2. Cách xem địa chỉ IP trên từng máy chuẩn xác
+Trên Kali Linux, mở terminal trên từng máy và gõ một trong các lệnh sau:
 ```bash
+# Cách 1: Nhanh nhất, in ngay IP, không phụ thuộc tên card (Khuyên dùng)
 hostname -I
+
+# Cách 2: Xem danh sách card mạng và IP dạng bảng sạch sẽ
+ip -br addr
+
+# Cách 3: Xem riêng card eth0 của VMware
+ip -4 addr show eth0
 ```
-* Giả sử:
-  * **Laptop 1** có IP Wi-Fi là: `192.168.43.10`
-  * **Laptop 2** có IP Wi-Fi là: `192.168.43.20`
-* **Kiểm tra thông mạng:**
-  * Tại Laptop 1 gõ: `ping -c 2 192.168.43.20`
-  * Tại Laptop 2 gõ: `ping -c 2 192.168.43.10`
-  * Cả 2 máy phản hồi ping thành công là bạn đã sẵn sàng 100%!
+*(Ghi chú: Tuyệt đối KHÔNG gõ `ip a show wlan0` trên VMware vì máy ảo không có card `wlan0`, sẽ báo lỗi `Device "wlan0" does not exist`)*.
 
 ---
 
-## III. CHI TIẾT THỰC HIỆN LAB 04 TRÊN 2 LAPTOP (SMURF ATTACK)
-
-### 1. Phân vai thực tế:
-* **Laptop 1 (Máy Nạn nhân & Trạm khuếch đại):** Đóng vai hệ thống mạng nội bộ công ty gồm Nạn nhân `vic` (`10.0.0.200`) và 3 trạm khuếch đại `amp1`, `amp2`, `amp3` (`10.0.0.11`, `.12`, `.13`).
-* **Laptop 2 (Máy Kẻ tấn công thực thụ):** Đóng vai hacker `atk` (`10.0.0.100`) ngồi ở laptop riêng, kết nối vào mạng và phát động tấn công.
-
-### 2. Các bước thực hiện:
-
-#### Bước 1: Khởi động mạng trên Laptop 1
-Tại terminal của **Laptop 1**, chạy lệnh setup cho host kèm IP của Laptop 2:
-```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
-sudo bash setup_lab4_2pc.sh host 192.168.43.20
-```
-
-#### Bước 2: Kết nối mạng từ Laptop 2
-Tại terminal của **Laptop 2**, chạy lệnh tham gia kèm IP của Laptop 1:
-```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
-sudo bash setup_lab4_2pc.sh attacker 192.168.43.10
-```
-*Laptop 2 tự động kiểm tra ping thông sang Nạn nhân `10.0.0.200` của Laptop 1.*
-
-#### Bước 3: Bật theo dõi gói tin trên Laptop 1
-Tại **Laptop 1**, mở terminal theo dõi Nạn nhân:
-```bash
-sudo ip netns exec vic tcpdump -i vic0 -nn icmp
-```
-
-#### Bước 4: Phát động tấn công từ Laptop 2
-Tại **Laptop 2**, gõ lệnh phát động tấn công Smurf:
-```bash
-sudo ip netns exec atk python3 smurf_attack.py
-```
-
-#### Bước 5: Thầy và trò cùng quan sát 2 màn hình laptop:
-* **Trên màn hình Laptop 2:** Thông báo gửi 10 gói tin giả mạo IP nguồn `10.0.0.200` tới địa chỉ broadcast `10.0.0.255`.
-* **Ngay lập tức trên màn hình Laptop 1:** Cửa sổ `tcpdump` của nạn nhân bị "dội bão" **30 gói tin Echo Reply** tới tấp từ cả 3 trạm khuếch đại `.11`, `.12`, `.13`!
-* **Minh chứng sống động:** 1 bạn bấm Enter ở laptop này, màn hình laptop kia hứng bão gói tin qua sóng Wi-Fi thực tế!
+### 3. Mẹo quan trọng: "Tạo liên kết trực tiếp tránh AP Isolation"
+> [!TIP]
+> Trong một số mạng Wi-Fi công cộng (quán cà phê, trường học, ký túc xá), Router Wi-Fi thường bật tính năng **AP Isolation / Client Isolation** (cấm 2 máy tính cùng bắt Wi-Fi nhìn thấy nhau) hoặc bật tường lửa chặn gói tin đặc biệt (IP Options, ICMP lạ).
+> 
+> **Giải pháp tối ưu 100%:**
+> 1. Dùng 1 điện thoại bật **Điểm phát sóng di động (Hotspot 4G)** hoặc trên 1 laptop bật **Windows Mobile Hotspot**.
+> 2. Cho cả 2 laptop kết nối vào cùng mạng Hotspot này.
+> 
+> Khi đó: Hai máy kết nối trực tiếp với nhau trong cùng một mạng LAN ảo, không có bất kỳ router trung gian nào can thiệp, toàn bộ các bài Lab sẽ chạy mượt mà 100%!
 
 ---
 
-## IV. CHI TIẾT THỰC HIỆN LAB 05 TRÊN 2 LAPTOP (ICMP REDIRECT ATTACK)
+## III. HƯỚNG DẪN THỰC THI CHI TIẾT TỪNG BÀI
 
-### 1. Phân vai thực tế:
-* **Laptop 1 (Hạ tầng mạng đích & Nạn nhân):** Chứa Nạn nhân `vic` (`10.0.0.2`), Router Gateway hợp pháp `gw` (`10.0.0.1`), và Server đích `dst` (`10.0.1.5`).
-* **Laptop 2 (Kẻ tấn công đứng giữa - MITM):** Chứa kẻ tấn công `atk` (`10.0.0.66`) đóng vai Gateway giả mạo.
-
-### 2. Các bước thực hiện:
-
-#### Bước 1: Khởi động hạ tầng trên Laptop 1
-Tại **Laptop 1**, chạy lệnh:
-```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
-sudo bash setup_lab5_2pc.sh host 192.168.43.20
-```
-Kiểm tra tuyến đường ban đầu của Nạn nhân:
-```bash
-sudo ip netns exec vic ip route get 10.0.1.5
-```
-*(Màn hình hiển thị: `10.0.1.5 via 10.0.0.1 dev vic0` $\rightarrow$ Đi qua Gateway chuẩn).*
-
-#### Bước 2: Kết nối Attacker từ Laptop 2
-Tại **Laptop 2**, chạy lệnh:
-```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
-sudo bash setup_lab5_2pc.sh attacker 192.168.43.10
-```
-
-#### Bước 3: Mở "kính lúp" nghe lén trên Laptop 2
-Tại **Laptop 2**, mở terminal lắng nghe các gói tin liên quan đến `10.0.1.5`:
-```bash
-sudo ip netns exec atk tcpdump -i atk0 -nn host 10.0.1.5
-```
-*(Hiện tại màn hình hoàn toàn trống vì nạn nhân chưa gửi dữ liệu qua Laptop 2).*
-
-#### Bước 4: Bắn gói tin ICMP Redirect từ Laptop 2
-Tại một terminal khác của **Laptop 2**, chạy script tấn công:
-```bash
-sudo ip netns exec atk python3 icmp_redirect.py
-```
-*Script gửi gói ICMP Redirect giả danh Gateway `10.0.0.1` bay qua sóng Wi-Fi sang Laptop 1.*
-
-#### Bước 5: Kiểm tra kết quả bẻ lái định tuyến trên Laptop 1
-Tại **Laptop 1**, kiểm tra lại bảng định tuyến của nạn nhân:
-```bash
-sudo ip netns exec vic ip route get 10.0.1.5
-```
-* **Hiện tượng kỳ diệu:** Tuyến đường đã bị thay đổi thành:
-  `10.0.1.5 via 10.0.0.66 dev vic0 ... <redirected> cache`!
-* Toàn bộ dữ liệu của Nạn nhân đã bị bẻ lái sang IP của **Laptop 2** (`10.0.0.66`)!
-
-#### Bước 6: Chứng minh chiếm quyền nghe lén Man-in-the-Middle thành công
-Tại **Laptop 1**, gõ lệnh gửi gói tin tới máy đích:
-```bash
-sudo ip netns exec vic ping -c 3 10.0.1.5
-```
-* **Quan sát màn hình Laptop 2:** Màn hình `tcpdump` trên Laptop 2 lập tức bắt trọn vẹn cả 3 gói tin ping của Laptop 1 bay sang!
-* Cuộc tấn công chiếm quyền điều hướng Man-in-the-Middle giữa 2 laptop vật lý thành công 100%!
-
----
-
-## V. CHI TIẾT THỰC HIỆN CÁC BÀI LAB CÒN LẠI (LAB 01, 02, 03, 06, 07)
-
-### Các bài Lab 2 máy: Lab 01, Lab 02, Lab 03, Lab 06 (Dùng chung `setup_pair_2pc.sh`)
-* **Laptop 1 (Máy Nạn nhân `h2` - 10.0.0.2):**
+### 1. LAB 01 — TCP SEQUENCE NUMBER PREDICTION & SPOOFING
+* **Trên Máy 2 (Victim):**
   ```bash
-  sudo bash setup_pair_2pc.sh host <IP_KALI_LAPTOP_2>
+  # Chạy máy chủ TCP lắng nghe trên cổng 9000
+  python3 server_h2.py
   ```
-* **Laptop 2 (Máy Kẻ tấn công `h1` - 10.0.0.1):**
+* **Trên Máy 1 (Attacker):**
   ```bash
-  sudo bash setup_pair_2pc.sh guest <IP_KALI_LAPTOP_1>
+  # Phần 1: Lấy mẫu 30 số ISN từ Máy 2 qua Wi-Fi
+  sudo python3 isn_sampler.py <IP_MAY_2>
+  
+  # Phần 2: Tấn công giả mạo IP nguồn
+  sudo python3 spoof_sniff.py <IP_MAY_2> <IP_SPOOF> eth0
   ```
 
-| Bài Lab | Thao tác trên Laptop 1 (`h2` - Nạn nhân) | Thao tác trên Laptop 2 (`h1` - Kẻ tấn công) | Hiện tượng quan sát |
-| :--- | :--- | :--- | :--- |
-| **Lab 01** *(ISN & Spoofing)* | `sudo ip netns exec h2 python3 server_h2.py` | `sudo ip netns exec h1 python3 isn_sampler.py`<br/>`sudo ip netns exec h1 python3 spoof_sniff.py` | Laptop 2 gửi dữ liệu giả mạo `10.0.0.77`, màn hình Laptop 1 nhận và in ra dòng chữ! |
-| **Lab 02** *(Source Route)* | `sudo ip netns exec h2 tcpdump -i veth2 -nn icmp` | `sudo ip netns exec h1 python3 ssrr.py` | Gói Request từ Laptop 2 gửi tới, Laptop 1 bị ép quay đầu trả lời thẳng về Laptop 2! |
-| **Lab 03** *(ICMP Tunnel)* | `sudo ip netns exec h2 sysctl -w net.ipv4.icmp_echo_ignore_all=1`<br/>`sudo ip netns exec h2 python3 icmp_server.py` | `sudo ip netns exec h1 python3 icmp_client.py` | Dữ liệu mật từ Laptop 2 được băm nhỏ tuồn qua ping sang Laptop 1 ghép lại nguyên vẹn! |
-| **Lab 06** *(Teardrop)* | `sudo ip netns exec h2 ping -i 0.3 10.0.0.1` | `sudo ip netns exec h1 python3 teardrop_attack.py` | Laptop 2 bắn gói phân mảnh đè nhau sang Laptop 1. Laptop 1 không bị sập, ping vẫn nhảy đều! |
-
 ---
 
-### Bài Lab 07: DNSSEC (Dùng `setup_dns_2pc.sh`)
-* **Laptop 1 (Hệ thống Máy chủ DNS):**
+### 2. LAB 02 — IP SOURCE ROUTING (SSRR)
+* **Trên Máy 2 (Victim):**
   ```bash
-  sudo bash setup_dns_2pc.sh host <IP_KALI_LAPTOP_2>
-  sudo bash setup_dnssec_configs.sh
-  sudo bash setup_unbound.sh
-  # Khoi dong BIND9 va Unbound
-  sudo ip netns exec dns-auth named -c /tmp/named-auth.conf -g &
-  sudo ip netns exec dns-res unbound -c /tmp/unbound.conf -d &
+  # Bật tính năng chấp nhận Source Route trên card eth0
+  sudo sysctl -w net.ipv4.conf.all.accept_source_route=1 net.ipv4.conf.eth0.accept_source_route=1
+  # Bật tcpdump theo dõi
+  sudo tcpdump -i eth0 -nn -v icmp
   ```
-* **Laptop 2 (Máy Khách `client` - 10.0.0.4):**
+* **Trên Máy 1 (Attacker):**
   ```bash
-  sudo bash setup_dns_2pc.sh client <IP_KALI_LAPTOP_1>
-  # Gui truy van kiem thuc DNSSEC qua Wi-Fi sang Laptop 1:
-  sudo ip netns exec client dig @10.0.0.3 www.lab.test +dnssec
+  # Gửi gói tin SSRR qua Wi-Fi ép Máy 2 phản hồi về Máy 1
+  sudo python3 ssrr.py <IP_MAY_2> <IP_MAY_1> eth0
   ```
-  *Laptop 2 nhận kết quả có cờ `ad` và bản ghi chữ ký `RRSIG` được kiểm thực từ xa qua sóng Wi-Fi!*
+* **Kiểm chứng phòng thủ trên Máy 2:**
+  ```bash
+  sudo sysctl -w net.ipv4.conf.all.accept_source_route=0 net.ipv4.conf.eth0.accept_source_route=0
+  ```
 
 ---
 
-## VI. DỌN DẸP MÔI TRƯỜNG KHI KẾT THÚC
-Trên **cả hai laptop**, chỉ cần chạy một lệnh duy nhất:
-```bash
-sudo bash clean_2pc.sh
-```
-Lệnh sẽ tự động xóa sạch các card `vxlan0`, bridge `br0`, và toàn bộ các không gian mạng ảo trên máy.
+### 3. LAB 03 — ICMP TUNNELING (KÊNH TRUYỀN NGẦM)
+* **Trên Máy 2 (Server):**
+  ```bash
+  # Chặn TCP cổng 9999
+  sudo iptables -F
+  sudo iptables -A INPUT -p tcp --dport 9999 -j DROP
+  
+  # Bật server ICMP lắng nghe kênh ngầm
+  sudo python3 icmp_server.py eth0
+  ```
+* **Trên Máy 1 (Client):**
+  ```bash
+  # Kiểm tra TCP bị chặn nhưng ICMP thông suốt
+  nc -z -v -w 2 <IP_MAY_2> 9999
+  ping -c 2 <IP_MAY_2>
+  
+  # Bắn dữ liệu mật qua kênh ping Wi-Fi
+  sudo python3 icmp_client.py <IP_MAY_2> eth0
+  ```
+* **Kết quả:** Máy 2 nhận và tái hợp dữ liệu mật 71 bytes tức thì!
 
 ---
 
-## VII. BẢNG TỔNG KẾT FILE KỊCH BẢN DÀNH CHO 2 LAPTOP
+### 4. LAB 04 — SMURF ATTACK (BROADCAST AMPLIFICATION DoS)
 
-| Tên File Script | Vị trí áp dụng | Chức năng chính |
-| :--- | :--- | :--- |
-| **`setup_lab4_2pc.sh`** | Lab 04 (Smurf Attack) | Dựng mạng khuếch đại trên Laptop 1 và kết nối máy Attacker trên Laptop 2 qua Wi-Fi |
-| **`setup_lab5_2pc.sh`** | Lab 05 (ICMP Redirect) | Dựng Gateway & Nạn nhân trên Laptop 1, đưa Kẻ tấn công trên Laptop 2 vào chiếm quyền MITM |
-| **`setup_pair_2pc.sh`** | Lab 01, 02, 03, 06 | Kết nối cặp máy `h1` (Laptop 2) và `h2` (Laptop 1) qua đường hầm VXLAN |
-| **`setup_dns_2pc.sh`** | Lab 07 (DNSSEC) | Đặt toàn bộ máy chủ DNS trên Laptop 1 và đưa máy khách `client` sang Laptop 2 |
-| **`clean_2pc.sh`** | Dùng chung cho cả 7 bài | Dọn dẹp sạch sẽ VXLAN, Bridge và Network Namespaces trên cả 2 máy |
+#### Cách 1: Triển khai trên 2 Laptop thật (Demo trực tiếp trước Giảng viên)
+* **Nguyên lý:** Máy 1 dựng hạ tầng gồm Nạn nhân `vic` (`10.0.0.200`) và 3 trạm khuếch đại `amp1..amp3` nối vào Switch `br0`. Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.100`) tham gia mạng thông qua đường hầm **VXLAN (UDP 4789)** nối qua sóng Wi-Fi.
+* **Trên Máy 1 (Host - Nạn nhân & Trạm khuếch đại):**
+  ```bash
+  # Khởi tạo hạ tầng mạng trên Máy 1
+  sudo bash setup_lab4_2pc.sh host <IP_MAY_2>
+  
+  # Mở terminal theo dõi Nạn nhân
+  sudo ip netns exec vic tcpdump -i vic0 -nn icmp
+  ```
+* **Trên Máy 2 (Attacker - Kẻ tấn công thực thụ):**
+  ```bash
+  # Kết nối vào mạng của Máy 1 qua Wi-Fi
+  sudo bash setup_lab4_2pc.sh attacker <IP_MAY_1>
+  
+  # Phát động tấn công Smurf từ Máy 2
+  sudo ip netns exec atk python3 smurf_attack.py
+  ```
+* **Hiện tượng quan sát:** Sinh viên ở Máy 2 bấm Enter phát 10 gói ping broadcast `10.0.0.255`, màn hình Máy 1 lập tức hứng chịu **cơn bão 30 gói tin Reply** dội về tới tấp từ 3 trạm khuếch đại!
+* **Dọn dẹp:** Trên cả 2 máy chạy `sudo bash clean_2pc.sh`.
+
+#### Cách 2: Chạy mô phỏng trên 1 Laptop (để quay video hoặc nộp bài cá nhân)
+* **Lệnh chạy:**
+  ```bash
+  sudo bash setup_lan.sh
+  # Terminal 1:
+  sudo ip netns exec vic tcpdump -i vic0 -nn icmp
+  # Terminal 2:
+  sudo ip netns exec atk python3 smurf_attack.py
+  # Dọn dẹp:
+  sudo bash clean_lan.sh
+  ```
+
+---
+
+### 5. LAB 05 — ICMP REDIRECT ATTACK (ROUTE HIJACKING)
+
+#### Cách 1: Triển khai trên 2 Laptop thật (Demo trực tiếp trước Giảng viên)
+* **Nguyên lý:** Máy 1 dựng Gateway hợp pháp `gw` (`10.0.0.1`), Nạn nhân `vic` (`10.0.0.2`), và Server đích `dst` (`10.0.1.5`). Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.66`) cùng tham gia mạng qua đường hầm **VXLAN (UDP 4789)** nối qua sóng Wi-Fi.
+* **Trên Máy 1 (Host - Nạn nhân & Gateway & Server đích):**
+  ```bash
+  # Khởi tạo hạ tầng mạng trên Máy 1
+  sudo bash setup_lab5_2pc.sh host <IP_MAY_2>
+  
+  # Kiểm tra định tuyến ban đầu của Nạn nhân (thấy đi qua Gateway 10.0.0.1 chuẩn)
+  sudo ip netns exec vic ip route get 10.0.1.5
+  ```
+* **Trên Máy 2 (Attacker - Kẻ tấn công đứng giữa MITM):**
+  ```bash
+  # Kết nối vào mạng của Máy 1 qua Wi-Fi
+  sudo bash setup_lab5_2pc.sh attacker <IP_MAY_1>
+  
+  # Mở terminal lắng nghe gói tin bị bẻ lái
+  sudo ip netns exec atk tcpdump -i atk0 -nn host 10.0.1.5
+  
+  # Mở terminal khác trên Máy 2 và phát động tấn công ICMP Redirect
+  sudo ip netns exec atk python3 icmp_redirect.py
+  ```
+* **Kiểm chứng bẻ lái định tuyến trên Máy 1:**
+  ```bash
+  # Kiểm tra lại định tuyến: Tuyến đường đã bị đổi sang Gateway Máy 2 (10.0.0.66)!
+  sudo ip netns exec vic ip route get 10.0.1.5
+  
+  # Gửi gói tin thử nghiệm tới máy đích:
+  sudo ip netns exec vic ping -c 3 10.0.1.5
+  ```
+* **Hiện tượng quan sát:** Khi Máy 1 ping máy đích, toàn bộ gói tin ICMP của Máy 1 bị chuyển hướng bay qua sóng Wi-Fi sang màn hình `tcpdump` của Máy 2!
+* **Dọn dẹp:** Trên cả 2 máy chạy `sudo bash clean_2pc.sh`.
+
+#### Cách 2: Chạy mô phỏng trên 1 Laptop (để quay video hoặc nộp bài cá nhân)
+* **Lệnh chạy:**
+  ```bash
+  sudo bash setup_redirect.sh
+  # Terminal 1 (atk bắt gói tin):
+  sudo ip netns exec atk tcpdump -i atk0 -nn host 10.0.1.5
+  # Terminal 2 (vic kiểm tra định tuyến):
+  sudo ip netns exec vic ip route get 10.0.1.5
+  # Terminal 3 (atk tấn công):
+  sudo ip netns exec atk python3 icmp_redirect.py
+  # Terminal 2 (vic kiểm tra lại & ping):
+  sudo ip netns exec vic ip route get 10.0.1.5
+  sudo ip netns exec vic ping -c 2 10.0.1.5
+  # Dọn dẹp:
+  sudo bash clean_redirect.sh
+  ```
+
+---
+
+### 6. LAB 06 — TEARDROP ATTACK (IP FRAGMENTATION OVERLAP)
+* **Trên Máy 2 (Victim):**
+  ```bash
+  # Kiểm tra bộ đếm trước tấn công (ReasmFails = 0)
+  netstat -s | grep -i -E "reassembl|fragments"
+  
+  # Bật tcpdump bắt các mảnh phân mảnh trên card eth0
+  sudo tcpdump -i eth0 -nn -v 'ip[6:2] & 0x3fff != 0'
+  ```
+* **Trên Máy 1 (Attacker):**
+  ```bash
+  # Gửi các mảnh IP chồng lấn 16 bytes qua Wi-Fi tới Máy 2
+  sudo python3 teardrop_attack.py <IP_MAY_2> eth0
+  
+  # Đo nhịp tim ping xem Máy 2 có sống sót không
+  ping -c 3 <IP_MAY_2>
+  ```
+* **Kiểm tra trên Máy 2:**
+  ```bash
+  # Bộ đếm ReasmReqds tăng 2, ReasmFails tăng 1 -> Kernel xử lý an toàn!
+  netstat -s | grep -i -E "reassembl|fragments"
+  ```
+
+---
+
+### 7. LAB 07 — DNSSEC (XÁC THỰC TÊN MIỀN AN TOÀN)
+* **Trên Máy 2 (DNS Server):**
+  ```bash
+  # Tắt dịch vụ resolved chiếm cổng 53 nếu có
+  sudo systemctl stop systemd-resolved 2>/dev/null || true
+
+  # Khởi tạo file cấu hình DNSSEC cho máy thật
+  sudo bash setup_dnssec_configs_real.sh <IP_MAY_2>
+  
+  # Chạy BIND9 có ký DNSSEC
+  sudo su
+  named -c /etc/bind/named-auth.conf -g &
+  
+  # Trích xuất Trust Anchor và tạo cấu hình Unbound
+  bash setup_unbound_real.sh <IP_MAY_2>
+  
+  # Chạy Unbound Resolver
+  unbound -c /etc/unbound/unbound.conf -d &
+  ```
+* **Trên Máy 1 (Client):**
+  ```bash
+  # Truy vấn DNSSEC qua sóng Wi-Fi tới Máy 2
+  dig @<IP_MAY_2> www.lab.test +dnssec
+  ```
+  *Quan sát:* `status: NOERROR`, cờ `ad` (Authenticated Data) xuất hiện, nhận IP `10.0.0.80` kèm `RRSIG`!
+* **Kiểm chứng tấn công giả mạo (Trên Máy 2):**
+  ```bash
+  # Khởi động Rogue DNS không ký
+  named -c /etc/bind/named-rogue.conf -g &
+  # Bẻ hướng Unbound sang Rogue
+  sed -i "s/stub-addr: .*/stub-addr: 127.0.0.1@5353/" /etc/unbound/unbound.conf
+  pkill -9 -f unbound
+  unbound -c /etc/unbound/unbound.conf -d &
+  ```
+* **Truy vấn lại từ Máy 1:**
+  ```bash
+  # Nhận ngay lỗi SERVFAIL, dữ liệu giả mạo bị chặn đứng!
+  dig @<IP_MAY_2> www.lab.test +dnssec
+  
+  # Tắt kiểm tra bằng cờ +cd -> Nhận IP giả 6.6.6.6!
+  dig @<IP_MAY_2> www.lab.test +cd +short
+  ```

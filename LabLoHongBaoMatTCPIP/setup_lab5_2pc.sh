@@ -144,3 +144,4 @@ elif [ "$ROLE" == "attacker" ]; then
     echo "    sudo ip netns exec atk python3 icmp_redirect.py"
     echo "=================================================================="
 fi
+

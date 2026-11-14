@@ -134,16 +134,17 @@ LabLoHongBaoMatTCPIP/
 ### PHƯƠNG ÁN 1: TRIỂN KHAI TRÊN 2 MÁY THẬT (KALI LINUX — CÙNG MẠNG WI-FI)
 
 #### 1. Chuẩn bị mạng
-* **Máy 1 (Attacker):** Kết nối Wi-Fi, kiểm tra IP bằng `ip a show wlan0` (giả sử IP: `192.168.1.100`).
-* **Máy 2 (Victim):** Kết nối chung Wi-Fi, kiểm tra IP bằng `ip a show wlan0` (giả sử IP: `192.168.1.105`).
-* Kiểm tra ping giữa 2 máy: Từ Máy 1 gõ `ping -c 2 192.168.1.105` đảm bảo thông suốt.
+* **Mô hình:** Cả 2 laptop đều chạy Kali Linux trên VMware Workstation ở chế độ **Bridged** và cùng kết nối vào một mạng Wi-Fi. Trong máy ảo VMware, card mạng hiển thị là **`eth0`** (hoặc `ens33`).
+* **Máy 1 (Attacker):** Kết nối Wi-Fi, kiểm tra IP bằng `hostname -I` hoặc `ip -br a` (giả sử IP: `192.168.1.100`).
+* **Máy 2 (Victim):** Kết nối chung Wi-Fi, kiểm tra IP bằng `hostname -I` hoặc `ip -br a` (giả sử IP: `192.168.1.105`).
+* Kiểm tra ping giữa 2 máy: Từ Máy 1 gõ `ping -c 2 192.168.1.105` đảm bảo thông suốt 0% packet loss.
 
 #### 2. Các bước tiến hành trên 2 máy thật
 * **Bước 1 (Trên Máy 2 - Victim):** Khởi động máy chủ dịch vụ:
   ```bash
   python3 server_h2.py
   ```
-  *(Máy chủ mở cổng 9000 trên `0.0.0.0`, lắng nghe mọi kết nối qua card Wi-Fi `wlan0`).*
+  *(Máy chủ mở cổng 9000 trên `0.0.0.0`, lắng nghe mọi kết nối qua card mạng `eth0` của máy ảo VMware).*
 
 * **Bước 2 (Trên Máy 1 - Attacker):** Lấy mẫu 30 số ISN từ xa qua sóng Wi-Fi:
   ```bash

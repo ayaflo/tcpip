@@ -102,3 +102,4 @@ elif [ "$ROLE" == "guest" ]; then
     echo "    * Lab 06: sudo ip netns exec h1 python3 teardrop_attack.py"
     echo "=================================================================="
 fi
+

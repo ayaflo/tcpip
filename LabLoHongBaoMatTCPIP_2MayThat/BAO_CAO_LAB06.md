@@ -190,8 +190,9 @@ Các file phục vụ thực hành được lưu tại: `/home/tantayen/Projects
 ### PHƯƠNG ÁN 1: TRIỂN KHAI TRÊN 2 MÁY THẬT KALI LINUX (CÙNG KẾT NỐI WI-FI)
 
 #### Thiết lập ban đầu:
-* **Máy 1 (Attacker)**: IP Wi-Fi (ví dụ `192.168.1.50`), card mạng `wlan0`.
-* **Máy 2 (Victim)**: IP Wi-Fi (ví dụ `192.168.1.100`), card mạng `wlan0`.
+* **Mô hình:** 2 máy laptop vật lý khác nhau cùng chạy Kali Linux trên VMware Workstation ở chế độ **Bridged** kết nối cùng mạng Wi-Fi. Trong Kali Linux của VMware, card mạng kết nối hiển thị là **`eth0`** (hoặc `ens33`).
+* **Máy 1 (Attacker)**: IP máy ảo (ví dụ `192.168.1.50`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
+* **Máy 2 (Victim)**: IP máy ảo (ví dụ `192.168.1.100`), kiểm tra bằng `hostname -I` hoặc `ip -br a`, card mạng `eth0`.
 
 #### Trình tự thực hành trên 2 máy thật:
 
@@ -203,18 +204,18 @@ Các file phục vụ thực hành được lưu tại: `/home/tantayen/Projects
 
 2. **Bước 2 — Trên Máy 2 (Victim): Bật `tcpdump` soi các gói tin phân mảnh:**
    ```bash
-   sudo tcpdump -i wlan0 -nn -v 'ip[6:2] & 0x3fff != 0'
+   sudo tcpdump -i eth0 -nn -v 'ip[6:2] & 0x3fff != 0'
    ```
    * Bộ lọc BPF `'ip[6:2] & 0x3fff != 0'` sẽ bắt giữ tất cả các gói tin có cờ More Fragments (MF) hoặc có Fragment Offset > 0.
 
 3. **Bước 3 — Trên Máy 1 (Attacker): Phát động tấn công Teardrop:**
    ```bash
-   sudo python3 teardrop_attack.py 192.168.1.100 wlan0
+   sudo python3 teardrop_attack.py 192.168.1.100 eth0
    ```
-   * Script Scapy phát 2 mảnh IP chồng lấn (ID=1234, Mảnh 1 offset 0, Mảnh 2 offset 8) trực tiếp qua sóng Wi-Fi tới Máy 2.
+   * Script Scapy phát 2 mảnh IP chồng lấn (ID=1234, Mảnh 1 offset 0, Mảnh 2 offset 8) trực tiếp qua mạng Wi-Fi tới Máy 2.
 
 4. **Bước 4 — Trên Máy 2 (Victim): Quan sát gói tin và kiểm tra bộ đếm SNMP:**
-   * Màn hình `tcpdump` trên Máy 2 lập tức bắt được 2 mảnh IP phân mảnh ập vào card `wlan0`:
+   * Màn hình `tcpdump` trên Máy 2 lập tức bắt được 2 mảnh IP phân mảnh ập vào card `eth0`:
      ```text
      IP (frag 1234:24@0+) 192.168.1.50 > 192.168.1.100: proto UDP
      IP (frag 1234:24@8)  192.168.1.50 > 192.168.1.100: proto UDP
@@ -373,8 +374,8 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 ### KỊCH BẢN A: DÀNH CHO QUAY VIDEO TRÊN 2 MÁY THẬT (QUA MẠNG WI-FI)
 
 > **Bố cục đề xuất khi quay video:**
-> * **Máy 1 (Bên trái):** Kali Linux - Máy Kẻ tấn công (IP ví dụ: `192.168.1.50`, card `wlan0`).
-> * **Máy 2 (Bên phải):** Kali Linux - Máy Nạn nhân (IP ví dụ: `192.168.1.100`, card `wlan0`).
+> * **Máy 1 (Bên trái):** Kali Linux trên VMware Bridged - Máy Kẻ tấn công (IP ví dụ: `192.168.1.50`, card `eth0`).
+> * **Máy 2 (Bên phải):** Kali Linux trên VMware Bridged - Máy Nạn nhân (IP ví dụ: `192.168.1.100`, card `eth0`).
 > * *Nguyên tắc:* Gõ lệnh tới đâu, giải thích ngay chức năng và ý nghĩa kỹ thuật tới đó.
 
 #### [0:00 - 0:35] Mở đầu & Giới thiệu đề tài
@@ -384,14 +385,16 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 #### [0:35 - 1:15] Bước 1: Kiểm tra IP và thông tuyến Wi-Fi giữa 2 máy
 * **Thao tác 1 (Trên Máy 2 - Kiểm tra IP):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
+  # Hoặc xem bảng chi tiết card mạng:
+  ip -br addr
   ```
   * **Lời thoại:**
-    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP Wi-Fi là `192.168.1.100`. Đây là máy chủ nạn nhân."*
+    *"Trước tiên, trên Máy 2 bên phải, em kiểm tra địa chỉ IP bằng lệnh `hostname -I` (hoặc `ip -br addr`). Do chạy trên VMware Bridged, card mạng là `eth0` và có IP là `192.168.1.100`. Đây là máy chủ nạn nhân."*
 
 * **Thao tác 2 (Trên Máy 1 - Kiểm tra IP & Ping sang Máy 2):**
   ```bash
-  ip -br addr show wlan0
+  hostname -I
   ping -c 2 192.168.1.100
   ```
   * **Lời thoại:**
@@ -407,24 +410,24 @@ Báo cáo cung cấp **2 phương án kịch bản tương ứng**:
 
 * **Thao tác 2 (Trên Máy 2 - Bật tcpdump bắt các gói tin phân mảnh):**
   ```bash
-  sudo tcpdump -i wlan0 -nn -v 'ip[6:2] & 0x3fff != 0'
+  sudo tcpdump -i eth0 -nn -v 'ip[6:2] & 0x3fff != 0'
   ```
   * **Lời thoại:**
-    *"Tiếp theo, trên Máy 2 em bật `tcpdump` trên card `wlan0` với bộ lọc `ip[6:2] & 0x3fff != 0` để chỉ bắt những gói tin có cờ More Fragments hoặc Fragment Offset lớn hơn 0."*
+    *"Tiếp theo, trên Máy 2 em bật `tcpdump` trên card `eth0` với bộ lọc `ip[6:2] & 0x3fff != 0` để chỉ bắt những gói tin có cờ More Fragments hoặc Fragment Offset lớn hơn 0."*
 
 #### [2:05 - 3:15] Bước 3: Phát động tấn công Teardrop từ Máy 1
 * **Thao tác trên Máy 1:**
   ```bash
-  sudo python3 teardrop_attack.py 192.168.1.100 wlan0
+  sudo python3 teardrop_attack.py 192.168.1.100 eth0
   ```
 * **Lời thoại giải thích:**
-  *"Bây giờ tại Máy 1 bên trái, em kích hoạt lệnh `sudo python3 teardrop_attack.py 192.168.1.100 wlan0`. Script Scapy này chế tạo một gói tin phân mảnh bất thường có cùng mã định danh `ID = 1234`:
+  *"Bây giờ tại Máy 1 bên trái, em kích hoạt lệnh `sudo python3 teardrop_attack.py 192.168.1.100 eth0`. Script Scapy này chế tạo một gói tin phân mảnh bất thường có cùng mã định danh `ID = 1234`:
   * *Mảnh 1: Có `frag = 0`, bật cờ `MF = 1`, mang 24 bytes tải 'A' (từ byte 0 đến 23).*
   * *Mảnh 2: Có `frag = 1` (đơn vị 8 byte, tức bắt đầu từ byte 8), tắt cờ `MF = 0`, mang 24 bytes tải 'B' (từ byte 8 đến 31).*
   
   *Điểm bất thường mấu chốt: Đoạn từ byte 8 đến byte 23 bị **chồng lấn đè lên nhau 16 bytes**! Trên Windows 95 hay Linux 2.0 cũ, phép tính độ dài còn lại bị âm, hàm `memcpy` ép kiểu thành 4GB làm tràn RAM và gây màn hình xanh sập máy ngay lập tức!
   
-  *Thầy và các bạn hãy nhìn sang Máy 2: Màn hình tcpdump đã bắt được trọn vẹn 2 mảnh UDP ID 1234 offset 0 và offset 8 ập vào card Wi-Fi!"*
+  *Thầy và các bạn hãy nhìn sang Máy 2: Màn hình tcpdump đã bắt được trọn vẹn 2 mảnh UDP ID 1234 offset 0 và offset 8 ập vào card mạng eth0!"*
 
 #### [3:15 - 4:10] Bước 4: Kiểm chứng tính miễn nhiễm của Linux Kernel & Đo nhịp tim
 * **Thao tác 1 (Trên Máy 2 - Nhấn Ctrl+C dừng tcpdump, kiểm tra lại bộ đếm SNMP):**

@@ -114,3 +114,4 @@ elif [ "$ROLE" == "attacker" ]; then
     echo "    sudo ip netns exec atk python3 smurf_attack.py"
     echo "=================================================================="
 fi
+

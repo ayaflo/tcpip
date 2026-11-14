@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# spoof_sniff.py - Gia mao IP nguon va hoan tat bat tay TCP 3 buoc tren Wi-Fi/LAN
+# spoof_sniff.py - Gia mao IP nguon va hoan tat bat tay TCP 3 buoc tren VMware Bridged / Wi-Fi / LAN
 import sys
 import time
 import threading
@@ -18,7 +18,7 @@ else:
     else:
         spoof = "10.0.0.77"
 
-iface = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "wlan0")
+iface = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "eth0")
 dport = int(sys.argv[4]) if len(sys.argv) > 4 else 9000
 sport = 12345
 

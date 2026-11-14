@@ -12,3 +12,4 @@ pkill -9 -f "named" 2>/dev/null || true
 pkill -9 -f "unbound" 2>/dev/null || true
 
 echo "[+] Da don dep xong toan bo tren may nay!"
+

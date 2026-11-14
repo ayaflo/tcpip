@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # ssrr.py - Gui goi tin ICMP Echo kem tuy chon SSRR (Strict Source Route)
-# Ho tro: 2 may that (Wi-Fi) hoac Network Namespace
+# Ho tro: 2 may that (VMware Bridged / Wi-Fi) hoac Network Namespace
 import sys
 import time
 from scapy.all import *
 
 victim_ip   = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
 attacker_ip = sys.argv[2] if len(sys.argv) > 2 else "10.0.0.1"
-iface       = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "wlan0")
+iface       = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "eth0")
 
 # Neu nguoi dung muon chi dinh IP gia mao
 if len(sys.argv) > 4:

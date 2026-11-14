@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # icmp_server.py - May chu hung du lieu tu kenh ngam ICMP Tunnel
-# Ho tro: Chay tren moi card mang cua 2 may that (wlan0) hoac namespace
+# Ho tro: Chay tren moi card mang cua 2 may that (VMware Bridged eth0, Wi-Fi...) hoac namespace
 import sys
 from scapy.all import *
 
@@ -12,7 +12,7 @@ print("==================================================================")
 if iface:
     print(f"[*] Dang lang nghe cac goi ICMP tren card mang: {iface}")
 else:
-    print("[*] Dang lang nghe tren tat ca cac card mang (wlan0, eth0...)...")
+    print("[*] Dang lang nghe tren tat ca cac card mang (eth0, ens33, wlan0...)...")
 print("[*] Du lieu tuon len se duoc boc tach, ghep noi va in ra ben duoi:\n")
 
 received_chunks = []

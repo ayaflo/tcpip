@@ -27,7 +27,7 @@ Kho lưu trữ toàn bộ mã nguồn, kịch bản tự động hóa (`.sh`, `.
   * `setup_pair_2pc.sh`: Triển khai Lab 01, 02, 03, 06 giữa 2 laptop (Host `h2` và Guest `h1`).
   * `setup_dns_2pc.sh`: Triển khai Lab 07 (DNSSEC) giữa 2 laptop (Host DNS Servers và Guest Client dig).
   * `clean_2pc.sh`: Dọn dẹp sạch sẽ kết nối 2 máy tính.
-* **[Lưu Ý Kỹ Thuật (VMware Win 11 vs Boot Ổ Rời)](LabLoHongBaoMatTCPIP_2MayThat/LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md)**: Cấu hình card Bridged, tên interface `eth0` vs `wlan0`, phân vai Server/Attacker và xử lý xung đột cổng 53.
+* **[Lưu Ý Kỹ Thuật Khi Triển Khai Trên 2 Máy VMware Bridged](LabLoHongBaoMatTCPIP_2MayThat/LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md)**: Hướng dẫn cấu hình VMware Bridged to Wi-Fi, lệnh xem IP chuẩn xác (`hostname -I`, `ip -br a`), sử dụng card mạng `eth0` thay vì `wlan0`, xử lý AP Isolation qua Hotspot và chạy trơn tru 7 bài lab.
 
 ---
 
