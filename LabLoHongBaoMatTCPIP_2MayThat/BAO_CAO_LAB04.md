@@ -58,26 +58,6 @@ flowchart TD
 
 ---
 
-### 4. Phân tích kỹ thuật: Vì sao Smurf Attack KHÔNG THỂ triển khai trên 2 máy vật lý qua Wi-Fi và bắt buộc dùng mô hình ảo hóa Network Namespace?
-
-> [!IMPORTANT]
-> **Đánh giá khả thi thực tế:** Nhiều người đặt câu hỏi liệu có thể mang 2 laptop Kali Linux nối cùng mạng Wi-Fi để thực hiện bài lab Smurf Attack hay không? Câu trả lời dứt khoát về mặt kỹ thuật mạng là **KHÔNG THỂ**, và việc sử dụng mô hình Network Namespace là lựa chọn khoa học bắt buộc vì 4 lý do nền tảng sau:
-
-1. **Thiếu vắng các Node khuếch đại (Amplifier Nodes) trong mô hình 2 máy:**
-   * Bản chất sống còn của Smurf Attack là **Khuếch đại (Amplification)**: Kẻ tấn công gửi 1 gói nhưng nạn nhân phải nhận $N$ gói dội về.
-   * Để có hệ số khuếch đại, mô hình tối thiểu phải có 3 thực thể: Kẻ tấn công $\rightarrow$ Mạng khuếch đại gồm nhiều máy $\rightarrow$ Nạn nhân. Nếu chỉ có 2 máy vật lý (1 Attacker, 1 Victim), **hoàn toàn không có các máy thứ 3, thứ 4, thứ 5 đóng vai trò Amplifier**. Khi Attacker ping vào địa chỉ broadcast, nếu chỉ có Victim nhận thì số gói reply nhận được chỉ là 1 gói ($\text{Hệ số khuếch đại} = \times 1$), làm mất hoàn toàn bản chất và ý nghĩa của bài lab Smurf Attack!
-2. **Chuẩn bảo mật RFC 2644 (BCP 34) trên Router Wi-Fi thực tế:**
-   * Trên các thiết bị Access Point / Router Wi-Fi thương mại hiện nay, tính năng cấm chuyển tiếp Directed Broadcast (`no ip directed-broadcast` theo RFC 2644) đã được bật mặc định ở tầng firmware cứng.
-   * Khi Attacker phát một gói tin nhắm vào địa chỉ broadcast (ví dụ `192.168.1.255`), chip chuyển mạch của Router Wi-Fi sẽ **hủy bỏ (drop) gói tin ngay lập tức**, không bao giờ nhân bản gói tin ra sóng vô tuyến.
-3. **Cơ chế chống bão sóng vô tuyến (Wireless RF Broadcast Storm Suppression):**
-   * Trong chuẩn mạng không dây IEEE 802.11, gói tin Broadcast được truyền ở tốc độ cơ bản thấp nhất (Basic Rate, thường là 1 Mbps hoặc 6 Mbps) tới tất cả các trạm. Để tránh nghẽn toàn bộ băng tần không dây, các AP Wi-Fi đều trang bị bộ lọc "Broadcast Storm Filter" giới hạn nghiêm ngặt hoặc drop hoàn toàn các luồng ICMP broadcast liên tục.
-4. **Tính năng cách ly trạm khách (AP / Client Isolation):**
-   * Đa phần các mạng Wi-Fi công cộng hoặc gia đình đều kích hoạt Client Isolation, ngăn chặn các máy không dây trao đổi trực tiếp với nhau ở Tầng 2.
-
-👉 **KẾT LUẬN KỸ THUẬT:** Mô hình 5 máy ảo hóa bằng **Network Namespace** (`atk`, `vic`, `amp1`, `amp2`, `amp3`) kết nối qua **Linux Bridge (`br0`)** trong bài lab này là mô hình chuẩn mực quốc tế (tương tự kiến trúc SEED Labs của ĐH Syracuse). Nó tái lập hoàn hảo một Switch phần cứng Ethernet Tầng 2 có khả năng nhân bản gói broadcast và cung cấp đủ 3 máy khuếch đại để đo đạc chính xác **Hệ số khuếch đại $\times 3$**, mang giá trị học thuật và thực nghiệm cao nhất mà không bị rào cản phần cứng Wi-Fi can thiệp.
-
----
-
 ## III. GIẢI THÍCH CHI TIẾT CÁC FILE MÃ NGUỒN
 
 Các file phục vụ thực hành được lưu tại: `/home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP/`
@@ -275,13 +255,60 @@ Terminal của Victim ngay lập tức ghi nhận 40 dòng gói tin xuất hiệ
 
 ---
 
-### [3:30 - 4:10] Bước 4: Dọn dẹp môi trường & Biện pháp phòng vệ toàn diện
-* **Thao tác trên terminal trái:**
-  ```bash
-  sudo bash clean_lan.sh
-  ```
-* **Lời thoại giải thích:**
-  *"Em chạy lệnh `sudo bash clean_lan.sh` để xóa Switch ảo `br0` và giải phóng toàn bộ 5 namespace.*
-  
-  *Qua bài thực hành số 04, chúng ta thấy rõ: Để triệt tiêu hoàn toàn hiểm họa Smurf Attack, bên cạnh việc cấu hình `icmp_echo_ignore_broadcasts = 1` trên các máy trạm nội bộ, biện pháp then chốt ở cấp độ hạ tầng là các kỹ sư mạng phải cấu hình lệnh `no ip directed-broadcast` trên toàn bộ Router biên theo khuyến cáo của chuẩn RFC 2644 để ngăn chặn kẻ tấn công từ Internet mượn mạng nội bộ làm bàn đạp khuếch đại DoS. Em xin kết thúc bài thực hành số 04 tại đây!"*
+## VIII. HƯỚNG DẪN TRIỂN KHAI TRÊN 2 LAPTOP THẬT (DEMO TRỰC TIẾP TRƯỚC GIẢNG VIÊN)
+
+> **Mục tiêu thực chiến:** Thay vì chỉ chạy trên 1 máy ảo chia đôi màn hình, nhóm có thể mang **2 chiếc laptop thật** đặt cạnh nhau trước bàn Giảng viên, cùng chạy máy ảo Kali Linux trên VMware và kết nối chung 1 mạng Wi-Fi (hoặc phát Mobile Hotspot từ điện thoại).  
+> Giảng viên sẽ tận mắt chứng kiến: **Sinh viên ở Laptop 2 bấm nút tấn công, màn hình Laptop 1 lập tức hứng chịu bão gói tin qua sóng Wi-Fi thực tế!**
+
+### 1. Phân vai và Chuẩn bị mạng
+* **Laptop 1 (Máy Nạn nhân & Trạm khuếch đại):** Đóng vai hệ thống mạng máy chủ nội bộ công ty.
+  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.10`
+* **Laptop 2 (Máy Kẻ tấn công thực thụ):** Đóng vai hacker mang laptop riêng đột nhập vào mạng.
+  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.20`
+* **Công nghệ kết nối:** Sử dụng đường hầm **VXLAN (UDP Port 4789)** chuẩn công nghiệp của Linux. Router Wi-Fi chỉ thấy các gói UDP bình thường giữa 2 máy tính nên **100% không bị chặn broadcast hay chặn IP giả mạo**!
+
+---
+
+### 2. Các bước thực hiện chi tiết
+
+#### Bước 1: Khởi tạo mạng trên Laptop 1
+Tại terminal Kali Linux của **Laptop 1**, chạy lệnh kèm IP của Laptop 2:
+```bash
+cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+sudo bash setup_lab4_2pc.sh host 192.168.43.20
+```
+*Script tự động tạo Switch ảo `br0`, khởi tạo Nạn nhân `vic` (`10.0.0.200`), 3 trạm khuếch đại `amp1..amp3` (`10.0.0.11..13`) và mở kết nối VXLAN sang Laptop 2.*
+
+#### Bước 2: Kết nối Attacker từ Laptop 2
+Tại terminal Kali Linux của **Laptop 2**, chạy lệnh tham gia kèm IP của Laptop 1:
+```bash
+cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+sudo bash setup_lab4_2pc.sh attacker 192.168.43.10
+```
+*Script tự động kết nối Laptop 2 vào mạng LAN ảo của Laptop 1 với danh tính Attacker `atk` (`10.0.0.100`) và ping thông suốt sang `10.0.0.200`.*
+
+#### Bước 3: Mở màn hình theo dõi trên Laptop 1
+Tại **Laptop 1**, mở terminal chạy `tcpdump` theo dõi máy nạn nhân:
+```bash
+sudo ip netns exec vic tcpdump -i vic0 -nn icmp
+```
+
+#### Bước 4: Phát động tấn công từ Laptop 2
+Tại **Laptop 2**, sinh viên gõ lệnh kích hoạt tấn công Smurf:
+```bash
+sudo ip netns exec atk python3 smurf_attack.py
+```
+
+#### Bước 5: Thuyết minh hiện tượng trước mặt Giảng viên:
+* **Trên màn hình Laptop 2:** Gửi đi 10 gói tin mang IP nguồn giả mạo là `10.0.0.200` tới địa chỉ broadcast `10.0.0.255`. Gói tin được đóng gói bay qua sóng Wi-Fi sang Laptop 1.
+* **Trên màn hình Laptop 1:** Cửa sổ `tcpdump` của Nạn nhân lập tức cuộn trào **30 gói tin Reply dội về tới tấp** từ 3 trạm khuếch đại `.11`, `.12`, `.13`!
+* **Dọn dẹp sau khi demo xong:** Trên cả 2 máy gõ `sudo bash clean_2pc.sh`.
+
+---
+
+### 3. Lời thoại mẫu khi 2 sinh viên thuyết trình trên 2 Laptop:
+* **Sinh viên 1 (đứng bên Laptop 1):** *"Thưa thầy, trên Laptop 1 em đóng vai hệ thống mạng của tổ chức, gồm máy chủ nạn nhân vic và 3 trạm máy trạm amp1, amp2, amp3 kết nối qua Switch ảo. Em đang bật tcpdump để theo dõi lưu lượng mạng của nạn nhân."*
+* **Sinh viên 2 (đứng bên Laptop 2):** *"Còn em ở Laptop 2 đóng vai kẻ tấn công ngồi từ xa kết nối qua mạng Wi-Fi. Bây giờ em sẽ bấm Enter chạy script `smurf_attack.py` để phát 10 gói ping broadcast giả mạo IP của bạn..."*
+* **Sinh viên 1 (chỉ vào màn hình Laptop 1):** *"Thầy hãy nhìn sang màn hình Laptop 1 của em: Ngay khi bạn vừa bấm Enter, 3 trạm máy trạm trên máy em đã bị lừa và đồng loạt dội ngược 30 gói tin phản hồi về máy nạn nhân của em, làm nghẽn toàn bộ băng thông mạng! Cuộc tấn công khuếch đại Smurf giữa 2 máy laptop vật lý đã thành công trọn vẹn!"*
+
 

@@ -66,29 +66,6 @@ flowchart LR
 
 ---
 
-### 3. Phân tích kỹ thuật: Giới hạn của mô hình 2 máy vật lý và lý do ICMP Redirect bắt buộc triển khai trên mô hình 4 node ảo (Network Namespace)
-
-> [!IMPORTANT]
-> **Đánh giá tính khả thi khi triển khai trên 2 máy thật:** Nhiều học viên thắc mắc liệu có thể dùng 2 máy Kali Linux kết nối cùng một mạng Wi-Fi để thực hiện bài lab ICMP Redirect Attack hay không? Câu trả lời là **KHÔNG THỂ THỰC HIỆN ĐƯỢC MỘT CÁCH AN TOÀN VÀ ĐẦY ĐỦ**, và bắt buộc phải dùng mô hình ảo hóa Network Namespace vì 4 rào cản kỹ thuật cốt lõi sau:
-
-1. **Yêu cầu topo 2 dải mạng độc lập (Multi-hop Subnet Topology):**
-   * Theo chuẩn RFC 792 và RFC 1122, ICMP Redirect **chỉ xảy ra khi máy trạm gửi gói tin tới một dải mạng khác nằm ngoài LAN** (trong lab là mạng đích `10.0.1.0/24` phía sau Router). Nếu máy đích nằm cùng dải mạng LAN, hệ thống sẽ sử dụng giao thức ARP phân giải MAC trực tiếp chứ không bao giờ kích hoạt cơ chế Redirect!
-   * Trong mô hình 2 máy thật cùng kết nối 1 mạng Wi-Fi, cả 2 máy đều cùng chung 1 subnet (ví dụ `192.168.1.0/24`). Không hề có sự tồn tại của dải mạng thứ 2 hay máy chủ đích (`10.0.1.5`) độc lập.
-2. **Kiểm tra tính hợp lệ khắt khe của Linux Kernel (`rt->rt_gateway` & Subnet Matching):**
-   * Trong mã nguồn hàm `__ip_do_redirect()` của nhân Linux:
-     * Gói tin ICMP Redirect **bắt buộc phải có IP nguồn trùng khớp 100% với Default Gateway hiện tại** mà máy nạn nhân đang trỏ tới (trên mạng Wi-Fi thật, đó chính là Router Wi-Fi, ví dụ `192.168.1.1`).
-     * Gateway mới được gợi ý (`new_gw` - IP của Attacker) **bắt buộc phải cùng nằm trên cùng subnet LAN** với card mạng nhận gói tin.
-     * IP đích của gói tin gốc **bắt buộc phải nằm ngoài subnet LAN**.
-3. **Nguy cơ an toàn mạng vật lý và xung đột ARP khi giả mạo Gateway thật:**
-   * Nếu Attacker (Máy 1) gửi gói Redirect giả mạo IP nguồn là Router Wi-Fi thật (`192.168.1.1`), việc can thiệp này có thể làm nhiễu loạn bảng định tuyến của các thiết bị khác trong nhà/phòng lab, gây mất kết nối Internet toàn mạng.
-   * Ngoài ra, khi lưu lượng Internet thật của Nạn nhân bị bẻ lái sang Attacker, Attacker bắt buộc phải đóng vai Router trung gian (bật NAT/iptables Masquerade), nếu không nạn nhân sẽ bị rớt mạng hoàn toàn chứ không thể kiểm chứng dòng chảy dữ liệu như trong bài lab.
-4. **Cơ chế bảo vệ `secure_redirects` mặc định của Linux:**
-   * Trên các bản phân phối Linux hiện đại, cờ `net.ipv4.conf.all.secure_redirects = 1` được kích hoạt mặc định: Kernel chỉ chấp nhận gói redirect nếu gateway mới đã từng nằm trong danh sách gateway dự phòng đã biết.
-
-👉 **KẾT LUẬN KỸ THUẬT:** Mô hình 4 node ảo hóa bằng **Network Namespace** (`vic`, `atk`, `gw`, `dst`) kết nối qua Linux Bridge `br0` là mô hình hoàn hảo nhất, đảm bảo tính khoa học chính xác 100% theo chuẩn RFC 792 / RFC 1122, cho phép bẻ lái tuyến đường tới mạng `10.0.1.5` và bắt trọn gói tin MITM một cách trực quan, minh bạch và an toàn tuyệt đối mà không gây rủi ro cho hạ tầng mạng thật.
-
----
-
 ### 3. Cấu trúc gói tin ICMP Redirect: "Gói tin Mẹ bồng Con" (RFC 792)
 
 Một gói tin ICMP Redirect không thể đứng trơ trọi một mình. Để chống giả mạo thô thiển, RFC 792 quy định nó phải chứa gói tin gốc:
@@ -469,15 +446,79 @@ flowchart TD
 
 ---
 
-### [4:10 - 4:50] Bước 5: Dọn dẹp & Giải pháp phòng thủ
-* **Thao tác trên terminal dưới trái:**
-  ```bash
-  sudo bash clean_redirect.sh
-  ```
-* **Lời thoại giải thích:**
-  *"Em thực thi lệnh `sudo bash clean_redirect.sh` để xóa Switch ảo, giải phóng các card mạng và namespace.*
-  
-  *Để phòng chống hình thức tấn công nguy hiểm này, trong môi trường thực tế, các chuyên gia an ninh mạng khuyến cáo:*
-  * *Trên máy trạm: Bắt buộc cấu hình tham số `net.ipv4.conf.all.accept_redirects = 0` để từ chối tuyệt đối mọi gói tin ICMP Redirect.*
-  * *Trên Router: Tắt tính năng gửi thông điệp Redirect bằng lệnh `net.ipv4.conf.all.send_redirects = 0` hoặc cấu hình `no ip redirects` trên thiết bị mạng chuyên dụng. Em xin kết thúc bài thực hành số 05 tại đây!"*
+## IX. HƯỚNG DẪN TRIỂN KHAI TRÊN 2 LAPTOP THẬT (DEMO TRỰC TIẾP TRƯỚC GIẢNG VIÊN)
+
+> **Mục tiêu thực chiến:** Triển khai kịch bản tấn công chiếm quyền định tuyến ICMP Redirect trên **2 chiếc laptop vật lý đặt cạnh nhau**, kết nối chung mạng Wi-Fi (hoặc Mobile Hotspot).  
+> Giảng viên sẽ tận mắt nhìn thấy: **Laptop 1 gửi gói tin đi ra ngoài, nhưng toàn bộ dữ liệu bị "bẻ lái" bay qua sóng Wi-Fi sang màn hình Laptop 2 của kẻ tấn công!**
+
+### 1. Phân vai và Chuẩn bị mạng
+* **Laptop 1 (Hạ tầng mạng & Nạn nhân):** Đóng vai hệ thống mạng gồm Nạn nhân `vic` (`10.0.0.2`), Gateway hợp pháp `gw` (`10.0.0.1`) và Máy chủ đích `dst` (`10.0.1.5`).
+  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.10`
+* **Laptop 2 (Máy Kẻ tấn công Man-in-the-Middle):** Đóng vai kẻ tấn công `atk` (`10.0.0.66`) cùng nối vào mạng Wi-Fi.
+  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.20`
+* **Công nghệ kết nối:** Sử dụng đường hầm **VXLAN (UDP Port 4789)**. Nhờ đóng gói qua UDP, router Wi-Fi không thể can thiệp hay chặn các gói tin ICMP Redirect và IP giả mạo!
+
+---
+
+### 2. Các bước thực hiện chi tiết
+
+#### Bước 1: Khởi tạo hạ tầng mạng trên Laptop 1
+Tại terminal Kali Linux của **Laptop 1**, chạy lệnh kèm IP của Laptop 2:
+```bash
+cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+sudo bash setup_lab5_2pc.sh host 192.168.43.20
+```
+Kiểm tra tuyến đường ban đầu của Nạn nhân trên Laptop 1:
+```bash
+sudo ip netns exec vic ip route get 10.0.1.5
+```
+*(Màn hình hiển thị: `10.0.1.5 via 10.0.0.1 dev vic0` $\rightarrow$ Đang đi qua đúng Gateway hợp pháp).*
+
+#### Bước 2: Kết nối Attacker từ Laptop 2
+Tại terminal Kali Linux của **Laptop 2**, chạy lệnh kèm IP của Laptop 1:
+```bash
+cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+sudo bash setup_lab5_2pc.sh attacker 192.168.43.10
+```
+*Laptop 2 nhận IP `10.0.0.66` và tự động nối thông vào Switch mạng LAN ảo của Laptop 1.*
+
+#### Bước 3: Mở "trạm đón lõng" nghe lén trên Laptop 2
+Tại **Laptop 2**, mở terminal lắng nghe các gói tin gửi tới `10.0.1.5`:
+```bash
+sudo ip netns exec atk tcpdump -i atk0 -nn host 10.0.1.5
+```
+*(Màn hình đang đứng chờ vì chưa có gói tin nào đi lạc qua Laptop 2).*
+
+#### Bước 4: Phát động tấn công ICMP Redirect từ Laptop 2
+Tại một terminal khác của **Laptop 2**, chạy script tấn công:
+```bash
+sudo ip netns exec atk python3 icmp_redirect.py
+```
+*Gói tin ICMP Redirect giả danh Gateway `10.0.0.1` bay qua sóng Wi-Fi từ Laptop 2 sang Laptop 1.*
+
+#### Bước 5: Kiểm tra bảng định tuyến bị bẻ lái trên Laptop 1
+Tại **Laptop 1**, sinh viên gõ lại lệnh kiểm tra tuyến đường của nạn nhân:
+```bash
+sudo ip netns exec vic ip route get 10.0.1.5
+```
+* **Hiện tượng bất ngờ:** Màn hình Laptop 1 đổi thành:
+  `10.0.1.5 via 10.0.0.66 dev vic0 ... <redirected> cache`
+* Toàn bộ dữ liệu của nạn nhân đã bị bẻ lái sang Gateway mới là **Laptop 2** (`10.0.0.66`)!
+
+#### Bước 6: Chứng minh chiếm quyền nghe lén Man-in-the-Middle thành công
+Tại **Laptop 1**, sinh viên gửi 3 gói ping tới máy chủ đích:
+```bash
+sudo ip netns exec vic ping -c 3 10.0.1.5
+```
+* **Mời Giảng viên nhìn sang màn hình Laptop 2:** Màn hình `tcpdump` của Laptop 2 lập tức bắt trọn vẹn cả 3 gói ping bay sang qua sóng Wi-Fi! Kẻ tấn công đứng ở laptop bên cạnh đã hoàn toàn chiếm được vị trí trung gian Man-in-the-Middle!
+* **Dọn dẹp sau khi demo xong:** Trên cả 2 máy gõ `sudo bash clean_2pc.sh`.
+
+---
+
+### 3. Lời thoại mẫu khi 2 sinh viên thuyết trình trên 2 Laptop:
+* **Sinh viên 1 (đứng bên Laptop 1):** *"Thưa thầy, trên Laptop 1 em đóng vai máy tính nạn nhân vic và Gateway hợp pháp gw. Ban đầu em kiểm tra lệnh `ip route get 10.0.1.5`, tuyến đường hiển thị rõ ràng là đi qua Gateway chuẩn 10.0.0.1."*
+* **Sinh viên 2 (đứng bên Laptop 2):** *"Còn em ở Laptop 2 đóng vai kẻ tấn công ngồi cùng quán cà phê kết nối Wi-Fi. Em đang bật sẵn `tcpdump` trên card mạng của mình để chờ hứng gói tin. Bây giờ em sẽ bấm Enter chạy script `icmp_redirect.py` để gửi gói tin giả mạo Router Gateway điều hướng nạn nhân sang máy em..."*
+* **Sinh viên 1 (chỉ vào màn hình Laptop 1):** *"Em vừa kiểm tra lại bảng định tuyến: Tuyến đường trên máy em lập tức xuất hiện cờ `<redirected>` và Gateway đã bị bẻ lái hoàn toàn sang IP của bạn ở Laptop 2! Bây giờ em gõ lệnh ping tới máy chủ đích 10.0.1.5..."*
+* **Sinh viên 2 (chỉ vào màn hình Laptop 2):** *"Thầy hãy nhìn sang màn hình Laptop 2 của em: Toàn bộ các gói tin ping mà bạn gửi đi đã bị chuyển hướng bay thẳng sang card mạng máy em! Cuộc tấn công Man-in-the-Middle giữa 2 máy laptop vật lý đã thành công 100%!"*
+
 

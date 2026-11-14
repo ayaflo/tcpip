@@ -21,8 +21,8 @@ Dựa trên nguyên lý hoạt động của các tầng giao thức mạng và 
 | **Lab 01** | **TCP Sequence Number Prediction & Spoofing** | **RẤT TỐT (100%)** | • Phần 1 (Lấy mẫu ISN): Máy 1 gửi SYN qua Wi-Fi tới cổng 9000 của Máy 2, trích xuất ISN và phân tích ngẫu nhiên RFC 6528.<br/>• Phần 2 (Giả mạo IP): Script được nâng cấp tự động phản hồi ARP cho IP giả mạo, cho phép Máy 2 gửi SYN/ACK về Máy 1 qua Wi-Fi trơn tru. |
 | **Lab 02** | **IP Source Routing (SSRR)** | **TỐT (Cần lưu ý AP)** | Hai máy cùng subnet Wi-Fi trao đổi trực tiếp ở Layer 2 qua AP Bridge. Máy 2 bật `accept_source_route=1`. Máy 1 gửi gói SSRR ép phản hồi về máy mình.<br/>*(Mẹo: Nếu Router Wi-Fi chặn IP options, Máy 2 bật Hotspot cho Máy 1 kết nối trực tiếp).* |
 | **Lab 03** | **ICMP Tunneling (Kênh ngầm dữ liệu)** | **HOÀN HẢO (100%)** | **Bài lab ấn tượng và thực tế nhất trên 2 laptop!** Máy 2 chặn TCP bằng iptables, chạy `icmp_server.py`. Máy 1 chạy `icmp_client.py` tuồn dữ liệu mật qua ping Wi-Fi. Máy 2 thu thập và tái tạo dữ liệu mật 71 bytes tức thì! |
-| **Lab 04** | **Smurf Attack (Broadcast Amplification DoS)** | **KHÓ TRIỂN KHAI (GIỮ NGUYÊN MÔ PHỎNG)** | • **Lý do:** Smurf cần một đội quân nhiều máy tính (Amplifiers) để khuếch đại lưu lượng dội về nạn nhân. Nếu chỉ có 2 máy thật thì **không có thực thể khuếch đại**.<br/>• Ngoài ra, Router Wi-Fi theo chuẩn RFC 2644 đều chặn directed broadcast ping (`.255`) để bảo vệ sóng vô tuyến.<br/>$\rightarrow$ **Giữ nguyên mô hình Network Namespace (5 máy qua Bridge ảo `br0`) để thể hiện đúng hệ số khuếch đại $\times 3$ lần.** |
-| **Lab 05** | **ICMP Redirect Attack (Route Hijacking)** | **KHÓ TRIỂN KHAI (GIỮ NGUYÊN MÔ PHỎNG)** | • **Lý do:** Đòi hỏi 4 node mạng độc lập (Gateway hợp pháp, Nạn nhân, Attacker, Mạng đích subnet khác).<br/>• Trên Wi-Fi thật, Router Wi-Fi thật là gateway duy nhất; kẻ tấn công không thể tự xưng là router thật một cách an toàn mà không làm mất kết nối mạng của cả phòng, đồng thời Kernel Linux chặn gói redirect giả mạo router ngoài subnet.<br/>$\rightarrow$ **Giữ nguyên mô hình Network Namespace 4 node chuẩn hóa.** |
+| **Lab 04** | **Smurf Attack (Broadcast Amplification DoS)** | **HOÀN HẢO (MÔ HÌNH 2 LAPTOP QUA VXLAN)** | • **Giải pháp đột phá:** Máy 1 dựng hạ tầng mạng gồm Nạn nhân `vic` (`10.0.0.200`) và 3 trạm khuếch đại `amp1..amp3` nối vào Switch `br0`. Đồng thời mở kết nối VXLAN qua Wi-Fi.<br/>• Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.100`) tham gia mạng qua Wi-Fi.<br/>• **Hiện tượng thực tế:** Máy 2 bấm nút tấn công, màn hình Máy 1 lập tức hứng trọn bão 30 gói tin dội về từ 3 trạm khuếch đại! Không bao giờ bị router Wi-Fi chặn gói tin! |
+| **Lab 05** | **ICMP Redirect Attack (Route Hijacking)** | **HOÀN HẢO (MÔ HÌNH 2 LAPTOP QUA VXLAN)** | • **Giải pháp đột phá:** Máy 1 dựng Gateway `gw` (`10.0.0.1`), Nạn nhân `vic` (`10.0.0.2`), và Server đích `dst` (`10.0.1.5`).<br/>• Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.66`) cùng tham gia mạng qua VXLAN.<br/>• **Hiện tượng thực tế:** Máy 2 bắn gói ICMP Redirect qua Wi-Fi sang Máy 1 làm bẻ lái tuyến đường của Nạn nhân. Khi Máy 1 ping máy đích, toàn bộ gói tin bay qua sóng Wi-Fi sang màn hình tcpdump của Máy 2! |
 | **Lab 06** | **Teardrop Attack (IP Fragmentation Overlap)** | **HOÀN HẢO (100%)** | Máy 1 gửi 2 mảnh IP chồng lấn 16 bytes qua Wi-Fi tới IP của Máy 2. Kernel của Máy 2 nhận mảnh, xử lý tái hợp, phát hiện lỗi đè và tăng bộ đếm `ReasmFails` lên 1 trên card `wlan0`, máy vẫn sống sót bình thường! |
 | **Lab 07** | **DNSSEC (Xác thực tên miền an toàn)** | **RẤT TỐT (Mô hình Client - Server)** | Máy 2 đóng vai Máy chủ DNS nội bộ (chạy BIND9 có ký DNSSEC và Resolver Unbound). Máy 1 đóng vai Client kết nối Wi-Fi, dùng `dig` truy vấn nhận cờ `ad` và chữ ký `RRSIG`. Khi chuyển sang máy giả mạo `rogue` $\rightarrow$ nhận lỗi `SERVFAIL`! |
 
@@ -126,8 +126,29 @@ ip -4 addr show wlan0 | grep inet
 ---
 
 ### 4. LAB 04 — SMURF ATTACK (BROADCAST AMPLIFICATION DoS)
-* **Khuyến nghị:** Thực hiện trên **Máy 1** (hoặc Máy 2) sử dụng mô hình Network Namespace với Switch ảo `br0` và 5 máy ảo.
-* **Lý do:** Mô phỏng chân thực hệ số khuếch đại $\times 3$ lần mà không bị router Wi-Fi chặn gói broadcast.
+
+#### Cách 1: Triển khai trên 2 Laptop thật (Demo trực tiếp trước Giảng viên)
+* **Nguyên lý:** Máy 1 dựng hạ tầng gồm Nạn nhân `vic` (`10.0.0.200`) và 3 trạm khuếch đại `amp1..amp3` nối vào Switch `br0`. Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.100`) tham gia mạng thông qua đường hầm **VXLAN (UDP 4789)** nối qua sóng Wi-Fi.
+* **Trên Máy 1 (Host - Nạn nhân & Trạm khuếch đại):**
+  ```bash
+  # Khởi tạo hạ tầng mạng trên Máy 1
+  sudo bash setup_lab4_2pc.sh host <IP_WIFI_MAY_2>
+  
+  # Mở terminal theo dõi Nạn nhân
+  sudo ip netns exec vic tcpdump -i vic0 -nn icmp
+  ```
+* **Trên Máy 2 (Attacker - Kẻ tấn công thực thụ):**
+  ```bash
+  # Kết nối vào mạng của Máy 1 qua Wi-Fi
+  sudo bash setup_lab4_2pc.sh attacker <IP_WIFI_MAY_1>
+  
+  # Phát động tấn công Smurf từ Máy 2
+  sudo ip netns exec atk python3 smurf_attack.py
+  ```
+* **Hiện tượng quan sát:** Sinh viên ở Máy 2 bấm Enter phát 10 gói ping broadcast `10.0.0.255`, màn hình Máy 1 lập tức hứng chịu **cơn bão 30 gói tin Reply** dội về tới tấp từ 3 trạm khuếch đại!
+* **Dọn dẹp:** Trên cả 2 máy chạy `sudo bash clean_2pc.sh`.
+
+#### Cách 2: Chạy mô phỏng trên 1 Laptop (để quay video hoặc nộp bài cá nhân)
 * **Lệnh chạy:**
   ```bash
   sudo bash setup_lan.sh
@@ -142,8 +163,40 @@ ip -4 addr show wlan0 | grep inet
 ---
 
 ### 5. LAB 05 — ICMP REDIRECT ATTACK (ROUTE HIJACKING)
-* **Khuyến nghị:** Thực hiện trên **Máy 1** (hoặc Máy 2) sử dụng mô hình Network Namespace 4 node (`gw`, `vic`, `atk`, `dst`).
-* **Lý do:** Kiểm soát toàn diện bảng định tuyến của Gateway hợp pháp và mạng đích, vượt qua các chốt chặn `NUD_VALID` của Kernel Linux an toàn.
+
+#### Cách 1: Triển khai trên 2 Laptop thật (Demo trực tiếp trước Giảng viên)
+* **Nguyên lý:** Máy 1 dựng Gateway hợp pháp `gw` (`10.0.0.1`), Nạn nhân `vic` (`10.0.0.2`), và Server đích `dst` (`10.0.1.5`). Máy 2 đóng vai Kẻ tấn công `atk` (`10.0.0.66`) cùng tham gia mạng qua đường hầm **VXLAN (UDP 4789)** nối qua sóng Wi-Fi.
+* **Trên Máy 1 (Host - Nạn nhân & Gateway & Server đích):**
+  ```bash
+  # Khởi tạo hạ tầng mạng trên Máy 1
+  sudo bash setup_lab5_2pc.sh host <IP_WIFI_MAY_2>
+  
+  # Kiểm tra định tuyến ban đầu của Nạn nhân (thấy đi qua Gateway 10.0.0.1 chuẩn)
+  sudo ip netns exec vic ip route get 10.0.1.5
+  ```
+* **Trên Máy 2 (Attacker - Kẻ tấn công đứng giữa MITM):**
+  ```bash
+  # Kết nối vào mạng của Máy 1 qua Wi-Fi
+  sudo bash setup_lab5_2pc.sh attacker <IP_WIFI_MAY_1>
+  
+  # Mở terminal lắng nghe gói tin bị bẻ lái
+  sudo ip netns exec atk tcpdump -i atk0 -nn host 10.0.1.5
+  
+  # Mở terminal khác trên Máy 2 và phát động tấn công ICMP Redirect
+  sudo ip netns exec atk python3 icmp_redirect.py
+  ```
+* **Kiểm chứng bẻ lái định tuyến trên Máy 1:**
+  ```bash
+  # Kiểm tra lại định tuyến: Tuyến đường đã bị đổi sang Gateway Máy 2 (10.0.0.66)!
+  sudo ip netns exec vic ip route get 10.0.1.5
+  
+  # Gửi gói tin thử nghiệm tới máy đích:
+  sudo ip netns exec vic ping -c 3 10.0.1.5
+  ```
+* **Hiện tượng quan sát:** Khi Máy 1 ping máy đích, toàn bộ gói tin ICMP của Máy 1 bị chuyển hướng bay qua sóng Wi-Fi sang màn hình `tcpdump` của Máy 2!
+* **Dọn dẹp:** Trên cả 2 máy chạy `sudo bash clean_2pc.sh`.
+
+#### Cách 2: Chạy mô phỏng trên 1 Laptop (để quay video hoặc nộp bài cá nhân)
 * **Lệnh chạy:**
   ```bash
   sudo bash setup_redirect.sh

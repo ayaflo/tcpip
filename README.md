@@ -20,7 +20,13 @@ Kho lưu trữ toàn bộ mã nguồn, kịch bản tự động hóa (`.sh`, `.
 
 ## 📚 Tài Liệu Hướng Dẫn & Cẩm Nang
 * **[Cẩm Nang Toàn Diện Chinh Phục Lab TCP/IP](cam_nang.md)**: Hướng dẫn từ A-Z về kiến trúc mạng, câu hỏi vấn đáp và mẹo thực hành trên Linux Network Namespaces (`ip netns`).
-* **[Hướng Dẫn Triển Khai Trên 2 Máy Thật](LabLoHongBaoMatTCPIP_2MayThat/HUONG_DAN_TRIEN_KHAI_2_MAY_THAT.md)**: Hướng dẫn chi tiết chạy thực nghiệm trên 2 máy tính vật lý kết nối Wi-Fi / Hotspot.
+* **[Hướng Dẫn Triển Khai Trên 2 Máy Thật (Wi-Fi / Hotspot)](LabLoHongBaoMatTCPIP/HUONG_DAN_TRIEN_KHAI_2_MAY_THAT.md)**: Hướng dẫn chi tiết chạy thực nghiệm trên 2 laptop vật lý kết nối Wi-Fi, sử dụng công nghệ VXLAN Overlay (RFC 7348) để trao đổi gói tin thực chiến giữa 2 máy.
+* **[Bộ Kịch Bản Tự Động Hóa Cho 2 Laptop](LabLoHongBaoMatTCPIP/)**:
+  * `setup_lab4_2pc.sh`: Triển khai Lab 04 (Smurf) trên 2 laptop (Host: Nạn nhân + 3 trạm khuếch đại, Attacker: Laptop 2).
+  * `setup_lab5_2pc.sh`: Triển khai Lab 05 (ICMP Redirect) trên 2 laptop (Host: Nạn nhân + Gateway + Đích, Attacker: Laptop 2 chiếm quyền MITM).
+  * `setup_pair_2pc.sh`: Triển khai Lab 01, 02, 03, 06 giữa 2 laptop (Host `h2` và Guest `h1`).
+  * `setup_dns_2pc.sh`: Triển khai Lab 07 (DNSSEC) giữa 2 laptop (Host DNS Servers và Guest Client dig).
+  * `clean_2pc.sh`: Dọn dẹp sạch sẽ kết nối 2 máy tính.
 * **[Lưu Ý Kỹ Thuật (VMware Win 11 vs Boot Ổ Rời)](LabLoHongBaoMatTCPIP_2MayThat/LUU_Y_TRIEN_KHAI_VMWARE_VS_MAY_THAT.md)**: Cấu hình card Bridged, tên interface `eth0` vs `wlan0`, phân vai Server/Attacker và xử lý xung đột cổng 53.
 
 ---
