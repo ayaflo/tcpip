@@ -257,58 +257,262 @@ Terminal của Victim ngay lập tức ghi nhận 40 dòng gói tin xuất hiệ
 
 ## VIII. HƯỚNG DẪN TRIỂN KHAI TRÊN 2 LAPTOP THẬT (DEMO TRỰC TIẾP TRƯỚC GIẢNG VIÊN)
 
-> **Mục tiêu thực chiến:** Thay vì chỉ chạy trên 1 máy ảo chia đôi màn hình, nhóm có thể mang **2 chiếc laptop thật** đặt cạnh nhau trước bàn Giảng viên, cùng chạy máy ảo Kali Linux trên VMware và kết nối chung 1 mạng Wi-Fi (hoặc phát Mobile Hotspot từ điện thoại).  
+> **Mục tiêu thực chiến:** Thay vì chỉ chạy trên 1 máy ảo chia đôi màn hình, nhóm mang **2 chiếc laptop thật** đặt cạnh nhau trước bàn Giảng viên, cùng chạy máy ảo Kali Linux trên VMware (hoặc cài trực tiếp) và kết nối chung 1 mạng Wi-Fi (hoặc phát Mobile Hotspot từ điện thoại).  
 > Giảng viên sẽ tận mắt chứng kiến: **Sinh viên ở Laptop 2 bấm nút tấn công, màn hình Laptop 1 lập tức hứng chịu bão gói tin qua sóng Wi-Fi thực tế!**
-
-### 1. Phân vai và Chuẩn bị mạng
-* **Laptop 1 (Máy Nạn nhân & Trạm khuếch đại):** Đóng vai hệ thống mạng máy chủ nội bộ công ty.
-  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.10`
-* **Laptop 2 (Máy Kẻ tấn công thực thụ):** Đóng vai hacker mang laptop riêng đột nhập vào mạng.
-  * Địa chỉ IP Wi-Fi ví dụ: `192.168.43.20`
-* **Công nghệ kết nối:** Sử dụng đường hầm **VXLAN (UDP Port 4789)** chuẩn công nghiệp của Linux. Router Wi-Fi chỉ thấy các gói UDP bình thường giữa 2 máy tính nên **100% không bị chặn broadcast hay chặn IP giả mạo**!
 
 ---
 
-### 2. Các bước thực hiện chi tiết
+### 1. Bản chất công nghệ VXLAN (RFC 7348) & Vì sao bắt buộc phải dùng cho 2 Laptop thật?
 
-#### Bước 1: Khởi tạo mạng trên Laptop 1
-Tại terminal Kali Linux của **Laptop 1**, chạy lệnh kèm IP của Laptop 2:
+#### a) Ba rào cản vật lý khiến mạng Wi-Fi thực tế không thể chạy Smurf Attack trực tiếp:
+1. **Rào cản 1 — Bộ lọc Broadcast (Broadcast Filtering / Wireless Containment):**
+   * Các Router / Access Point Wi-Fi (802.11) và điểm phát sóng Hotspot điện thoại mặc định chặn hoặc giới hạn tốc độ (rate-limit) gắt gao các gói tin gửi tới địa chỉ Broadcast Layer 2 (`FF:FF:FF:FF:FF:FF`) hoặc Layer 3 (`192.168.x.255`).
+   * Mục đích của nhà sản xuất là ngăn chặn hiện tượng nghẽn sóng vô tuyến (Airtime Exhaustion). Do đó, gói ping broadcast phát từ Laptop 2 sẽ bị router Wi-Fi nuốt chửng ngay tại sóng, không thể truyền tới các máy khác.
+2. **Rào cản 2 — Cơ chế chống giả mạo IP nguồn (Anti-Spoofing / Egress Filtering / RFC 2827 - BCP 38):**
+   * Router Wi-Fi cấp dải IP ví dụ `192.168.43.0/24`. Nếu Laptop 2 tự ý phát gói tin có IP nguồn giả mạo là `10.0.0.200`, Router Wi-Fi thực hiện kiểm tra đường dẫn ngược (Unicast Reverse Path Forwarding - uRPF) và tiêu hủy (drop) gói tin ngay lập tức vì IP nguồn không hợp lệ.
+3. **Rào cản 3 — Thiếu hạ tầng trạm khuếch đại dễ bị tổn thương (Vulnerable Amplifiers):**
+   * Mọi hệ điều hành hiện đại trên các thiết bị kết nối vào Wi-Fi thật (điện thoại, laptop người khác) đều mặc định bật tường lửa và cấm trả lời broadcast ping (`net.ipv4.icmp_echo_ignore_broadcasts = 1`). Kẻ tấn công không thể tìm được máy nào phản hồi để tạo hiệu ứng khuếch đại.
+
+#### b) Giải pháp kỹ thuật: Mạng ảo lồng mạng thật bằng VXLAN (Virtual Extensible LAN - RFC 7348)
+* **VXLAN là gì?** VXLAN là công nghệ đóng gói mạng Tầng 2 (Data Link) lồng bên trong gói tin Tầng 4 (UDP) chạy trên mạng Tầng 3 (IP Underlay).
+* **Cơ chế đóng gói (Encapsulation):**
+  * Toàn bộ gói tin mạng LAN ảo `10.0.0.0/24` (gồm Inner IP Header có IP nguồn giả `10.0.0.200`, IP đích Broadcast `10.0.0.255`, và ICMP Echo Request) được bọc kín thành Payload của một gói tin UDP chuẩn công nghiệp với **Cổng đích (Destination Port) là 4789**.
+  * Bên ngoài cùng là Outer IP Header với IP nguồn là IP Wi-Fi của Laptop 2 (ví dụ `192.168.43.20`) và IP đích là IP Wi-Fi của Laptop 1 (ví dụ `192.168.43.10`).
+* **Cơ chế mở gói (Decapsulation):**
+  * Khi gói tin bay qua sóng Wi-Fi tới Laptop 1, Router Wi-Fi chỉ nhìn thấy đây là **một gói tin UDP Unicast hoàn toàn hợp lệ giữa 2 địa chỉ IP được cấp phép**, không có broadcast, không có IP giả ở lớp vỏ ngoài.
+  * Nhân Linux của Laptop 1 nhận gói tin tại cổng UDP 4789, bóc bỏ lớp vỏ Outer IP/UDP, lấy ra Ethernet Frame ảo nguyên vẹn bên trong và chuyển thẳng vào Switch ảo `br0`.
+  * Switch ảo `br0` thấy gói tin có IP đích `10.0.0.255` (Broadcast), liền nhân bản và đẩy ra cả 3 máy ảo khuếch đại `amp1`, `amp2`, `amp3` trên máy mình!
+
+```mermaid
+flowchart TD
+    subgraph Laptop2["Laptop 2 (Attacker - IP Wi-Fi: 192.168.43.20)"]
+        ATK["Namespace: atk (IP: 10.0.0.100)"]
+        SCRIPT["smurf_attack.py: Tạo gói Ping<br/>Src: 10.0.0.200 | Dst: 10.0.0.255"]
+        VXLAN2["Card VXLAN (atk0)<br/>Đóng gói Frame vào UDP DstPort 4789"]
+        ATK --> SCRIPT --> VXLAN2
+    end
+
+    subgraph WiFi["Mạng Wi-Fi vật lý (Underlay Network)"]
+        AP["Router Wi-Fi / Hotspot<br/>Chỉ thấy gói UDP Unicast thường: 192.168.43.20 -> 192.168.43.10:4789<br/>(100% Không bị chặn Broadcast hay chặn IP giả)"]
+    end
+
+    subgraph Laptop1["Laptop 1 (Host Mạng nội bộ - IP Wi-Fi: 192.168.43.10)"]
+        VXLAN1["Card VXLAN (vxlan0)<br/>Mở gói UDP, trích xuất Frame Tầng 2"]
+        BR["Switch ảo Linux Bridge (br0)"]
+        VIC["Namespace: vic (10.0.0.200)<br/>(Nạn nhân theo dõi tcpdump)"]
+        AMP1["Namespace: amp1 (10.0.0.11)"]
+        AMP2["Namespace: amp2 (10.0.0.12)"]
+        AMP3["Namespace: amp3 (10.0.0.13)"]
+        
+        VXLAN1 --> BR
+        BR -->|Nhân bản Broadcast| AMP1
+        BR -->|Nhân bản Broadcast| AMP2
+        BR -->|Nhân bản Broadcast| AMP3
+        AMP1 -->|Dội 10 gói Reply| BR
+        AMP2 -->|Dội 10 gói Reply| BR
+        AMP3 -->|Dội 10 gói Reply| BR
+        BR -->|Tổng 30 gói Reply| VIC
+    end
+
+    VXLAN2 ==>|Sóng Wi-Fi| AP ==>|Sóng Wi-Fi| VXLAN1
+```
+
+---
+
+### 2. Bóc tách chi tiết từng câu lệnh trong kịch bản triển khai (`setup_lab4_2pc.sh`)
+
+Mọi câu lệnh trong kịch bản đều được thiết kế chuẩn xác để xây dựng kiến trúc mạng VXLAN phân tán:
+
+#### a) Phần mở cổng tường lửa và dọn dẹp hạ tầng cũ:
 ```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+iptables -I INPUT -p udp --dport 4789 -j ACCEPT
+```
+* **Bóc tách chi tiết từng tham số:**
+  * `iptables`: Tiện ích dòng lệnh quản trị tường lửa Netfilter trong nhân Linux.
+  * `-I INPUT`: (Insert) Chèn một luật mới vào ngay vị trí đầu tiên của chuỗi `INPUT` (chuỗi xử lý các gói tin mạng hướng vào chính máy tính này).
+  * `-p udp`: (Protocol) Chỉ định luật áp dụng cho các gói tin sử dụng giao thức tầng giao vận UDP.
+  * `--dport 4789`: (Destination Port) Cổng nhận dữ liệu đích là `4789` — cổng chuẩn quốc tế do IANA cấp phép riêng cho công nghệ đường hầm VXLAN.
+  * `-j ACCEPT`: (Jump Target) Chỉ định hành động xử lý: Chấp nhận (cho phép) gói tin đi qua, ngăn ngừa trường hợp tường lửa mặc định của hệ thống chặn mất luồng dữ liệu VXLAN.
+
+```bash
+ip link del vxlan0 2>/dev/null || true
+ip link del br0 2>/dev/null || true
+```
+* **Ý nghĩa:** Xóa bỏ giao diện mạng ảo `vxlan0` và switch ảo `br0` cũ nếu còn sót lại từ lần chạy trước để đảm bảo trạng thái mạng hoàn toàn sạch sẽ, tránh xung đột. Đoạn `2>/dev/null || true` giúp bỏ qua thông báo lỗi nếu thiết bị chưa từng tồn tại.
+
+---
+
+#### b) Cấu hình trên LAPTOP 1 (Đóng vai trò HOST: Máy Nạn nhân & Trạm khuếch đại):
+
+```bash
+# 1. Tạo Switch mạng LAN ảo br0
+ip link add br0 type bridge
+ip link set br0 up
+```
+* **Bóc tách chi tiết:**
+  * `ip link add br0 type bridge`: Yêu cầu Linux Kernel khởi tạo một thiết bị mạng ảo hoạt động ở Tầng 2 (Data Link Layer) với tên gọi `br0`, mang đầy đủ hành vi chuyển mạch gói của một thiết bị Switch Ethernet vật lý.
+  * `ip link set br0 up`: Kích hoạt trạng thái chuyển mạch của `br0` sang sẵn sàng (UP).
+
+```bash
+# 2. Khởi tạo từng máy ảo nội bộ bằng hàm add_host
+add_host() {
+    ns=$1; ipaddr=$2
+    ip netns add $ns
+    ip link add ${ns}0 type veth peer name ${ns}-br
+    ip link set ${ns}-br master br0
+    ip link set ${ns}-br up
+    ip link set ${ns}0 netns $ns
+    ip netns exec $ns ip addr add ${ipaddr}/24 dev ${ns}0
+    ip netns exec $ns ip link set ${ns}0 up
+    ip netns exec $ns ip link set lo up
+}
+```
+* **Bóc tách từng dòng trong hàm tạo máy ảo:**
+  * `ip netns add $ns`: Tạo một không gian mạng cô lập (Network Namespace) mang tên `$ns` (`vic`, `amp1`, `amp2`, `amp3`). Namespace này sở hữu bảng định tuyến, bảng ARP, danh sách socket và card mạng hoàn toàn riêng biệt.
+  * `ip link add ${ns}0 type veth peer name ${ns}-br`: Tạo một cặp dây mạng ảo Veth (Virtual Ethernet Pair). Bản chất như một sợi dây mạng LAN có 2 đầu: đầu `${ns}0` và đầu `${ns}-br`. Bất kỳ byte dữ liệu nào đi vào đầu này sẽ lập tức chui ra ở đầu kia.
+  * `ip link set ${ns}-br master br0`: Cắm đầu cáp `${ns}-br` vào một cổng của Switch ảo `br0`.
+  * `ip link set ${ns}-br up`: Bật đầu cắm phía Switch lên.
+  * `ip link set ${ns}0 netns $ns`: Đưa đầu cáp còn lại `${ns}0` cắm thẳng vào bên trong máy ảo `$ns`.
+  * `ip netns exec $ns ip addr add ${ipaddr}/24 dev ${ns}0`: Đặt địa chỉ IP tĩnh lớp C (mặt nạ mạng `/24` tức `255.255.255.0`) cho card mạng trong máy ảo (ví dụ `10.0.0.200/24` cho `vic`, `10.0.0.11..13/24` cho `amp1..amp3`).
+  * `ip netns exec $ns ip link set ${ns}0 up`: Bật card mạng bên trong máy ảo hoạt động.
+  * `ip netns exec $ns ip link set lo up`: Kích hoạt giao diện loopback nội bộ (`127.0.0.1`) cho máy ảo.
+
+```bash
+# 3. Kích hoạt lỗ hổng phản hồi Broadcast trên 3 trạm khuếch đại
+for h in amp1 amp2 amp3; do
+    ip netns exec $h sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=0
+done
+```
+* **Bóc tách chi tiết:**
+  * `ip netns exec $h`: Thực thi câu lệnh can thiệp cấu hình nhân Linux bên trong không gian mạng của máy trạm `$h`.
+  * `sysctl -w`: Ghi đè (Write) một tham số runtime của Linux Kernel.
+  * `net.ipv4.icmp_echo_ignore_broadcasts=0`: Giá trị `= 0` có nghĩa là **VÔ HIỆU HÓA cờ lờ đi gói broadcast**, tức là **CHO PHÉP máy trả lời phản hồi Echo Reply khi nhận được gói tin Ping gửi tới địa chỉ Broadcast của mạng LAN (`10.0.0.255`)**. Đây chính là điều kiện tiên quyết tạo nên lỗ hổng Smurf Attack cổ điển.
+
+```bash
+# 4. Tạo đường hầm VXLAN nối Switch br0 sang Laptop 2
+ip link add vxlan0 type vxlan id 104 remote "$REMOTE_IP" dstport 4789 dev "$DEF_DEV"
+ip link set vxlan0 master br0
+ip link set vxlan0 up
+```
+* **Bóc tách từng tham số cốt lõi của lệnh tạo VXLAN:**
+  * `ip link add vxlan0`: Tạo một giao diện mạng ảo mang tên `vxlan0`.
+  * `type vxlan`: Xác định kiểu giao diện là VXLAN Tunnel theo chuẩn RFC 7348.
+  * `id 104`: VXLAN Network Identifier (VNI) — Mã định danh mạng ảo, tương tự như số VLAN ID trong mạng doanh nghiệp. Hai laptop bắt buộc phải cài đặt chung một số ID (`104`) để có thể bắt tay và ghép nối gói tin vào cùng một miền quảng bá.
+  * `remote "$REMOTE_IP"`: Thiết lập địa chỉ IP đích ở mạng vật lý (IP Wi-Fi của Laptop 2, ví dụ `192.168.43.20`). Khi có gói tin cần gửi qua đường hầm, Linux Kernel sẽ gửi gói tin Unicast tới thẳng IP này.
+  * `dstport 4789`: Thiết lập cổng UDP đích cho gói tin đóng gói theo chuẩn IANA.
+  * `dev "$DEF_DEV"`: Card mạng vật lý (hoặc card mạng ảo Bridged `eth0`/`ens33`/`wlan0`) trên hệ điều hành dùng để truyền và nhận các gói UDP 4789 ra ngoài mạng thật.
+  * `ip link set vxlan0 master br0`: **Lệnh cực kỳ quan trọng**: Cắm đầu ra của giao diện VXLAN `vxlan0` vào làm một cổng thành viên của Switch ảo `br0`. Nhờ câu lệnh này, Switch `br0` coi đường hầm Wi-Fi nối sang Laptop 2 hệt như một cổng cắm dây mạng vật lý cắm trực tiếp vào switch!
+
+---
+
+#### c) Cấu hình trên LAPTOP 2 (Đóng vai trò ATTACKER: Kẻ tấn công từ xa):
+
+```bash
+# 1. Tạo Namespace cho Kẻ tấn công
+ip netns add atk
+
+# 2. Tạo giao diện VXLAN trỏ ngược về Laptop 1
+ip link add vxlan0 type vxlan id 104 remote "$REMOTE_IP" dstport 4789 dev "$DEF_DEV"
+
+# 3. Đưa đường hầm VXLAN thẳng vào bên trong máy Attacker
+ip link set vxlan0 netns atk
+ip netns exec atk ip link set vxlan0 name atk0
+ip netns exec atk ip addr add 10.0.0.100/24 dev atk0
+ip netns exec atk ip link set atk0 up
+ip netns exec atk ip link set lo up
+```
+* **Bóc tách chi tiết:**
+  * `ip link set vxlan0 netns atk`: Thay vì cắm vào switch như Laptop 1, Laptop 2 đẩy thẳng giao diện đường hầm `vxlan0` vào bên trong không gian mạng của kẻ tấn công `atk`.
+  * `ip netns exec atk ip link set vxlan0 name atk0`: Đổi tên card mạng thành `atk0` cho ngắn gọn, dễ phân biệt.
+  * `ip netns exec atk ip addr add 10.0.0.100/24 dev atk0`: Đặt địa chỉ IP của Kẻ tấn công là `10.0.0.100/24`, cùng nằm chung dải mạng ảo `10.0.0.0/24` với Nạn nhân và các trạm khuếch đại bên Laptop 1.
+  * `ip link set atk0 up` & `lo up`: Kích hoạt card mạng `atk0` và loopback sẵn sàng chiến đấu.
+
+---
+
+### 3. Quy trình thực nghiệm 5 bước trên 2 Laptop trước Giảng viên
+
+#### Bước 1: Khởi tạo mạng nội bộ trên Laptop 1
+Tại terminal Kali Linux của **Laptop 1**, di chuyển vào thư mục dự án và chạy lệnh với vai trò `host`, truyền vào IP Wi-Fi của Laptop 2 (ví dụ `192.168.43.20`):
+```bash
+cd ~/Desktop/PROJECT/tcpip/LabLoHongBaoMatTCPIP_2MayThat
 sudo bash setup_lab4_2pc.sh host 192.168.43.20
 ```
-*Script tự động tạo Switch ảo `br0`, khởi tạo Nạn nhân `vic` (`10.0.0.200`), 3 trạm khuếch đại `amp1..amp3` (`10.0.0.11..13`) và mở kết nối VXLAN sang Laptop 2.*
 
-#### Bước 2: Kết nối Attacker từ Laptop 2
-Tại terminal Kali Linux của **Laptop 2**, chạy lệnh tham gia kèm IP của Laptop 1:
+#### Bước 2: Kết nối Kẻ tấn công từ Laptop 2
+Tại terminal Kali Linux của **Laptop 2**, chạy lệnh với vai trò `attacker`, truyền vào IP Wi-Fi của Laptop 1 (ví dụ `192.168.43.10`):
 ```bash
-cd /home/tantayen/Projects/TCPIP/LabLoHongBaoMatTCPIP
+cd ~/Desktop/PROJECT/tcpip/LabLoHongBaoMatTCPIP_2MayThat
 sudo bash setup_lab4_2pc.sh attacker 192.168.43.10
 ```
-*Script tự động kết nối Laptop 2 vào mạng LAN ảo của Laptop 1 với danh tính Attacker `atk` (`10.0.0.100`) và ping thông suốt sang `10.0.0.200`.*
+*Kiểm tra thông tuyến:* Tại Laptop 2, gõ lệnh ping kiểm tra kết nối ảo:
+```bash
+sudo ip netns exec atk ping -c 2 10.0.0.200
+```
+* **Bóc tách cờ:** `-c 2` (Count = 2) chỉ gửi đúng 2 gói tin ping để xác nhận đường truyền thông suốt mà không làm nghẽn terminal. Kết quả phản hồi `2 packets transmitted, 2 received, 0% packet loss` chứng minh đường hầm VXLAN qua Wi-Fi đã hoạt động hoàn hảo!
 
-#### Bước 3: Mở màn hình theo dõi trên Laptop 1
-Tại **Laptop 1**, mở terminal chạy `tcpdump` theo dõi máy nạn nhân:
+#### Bước 3: Mở màn hình túc trực bắt gói tin trên Laptop 1
+Tại terminal của **Laptop 1**, chạy công cụ `tcpdump` trên card mạng của máy Nạn nhân:
 ```bash
 sudo ip netns exec vic tcpdump -i vic0 -nn icmp
 ```
+* **Bóc tách chi tiết từng thành phần của câu lệnh:**
+  * `sudo`: Yêu cầu đặc quyền quản trị cao nhất (root) để đưa card mạng vào chế độ bắt gói tin hỗn tạp (Promiscuous Mode).
+  * `ip netns exec vic`: Thực thi chương trình bên trong không gian mạng của máy Nạn nhân `vic`.
+  * `tcpdump`: Trình bắt và giám sát gói tin dòng lệnh mạnh mẽ nhất hệ thống Linux.
+  * `-i vic0`: (Interface) Chỉ định đích danh card mạng ảo cần lắng nghe là `vic0` (card của Nạn nhân).
+  * `-nn`: Cờ cực kỳ quan trọng gồm 2 chữ `n`:
+    * Chữ `n` thứ nhất: Không phân giải địa chỉ IP thành tên miền qua DNS (tránh phát sinh lưu lượng DNS thừa gây nhiễu màn hình và giảm độ trễ hiển thị).
+    * Chữ `n` thứ hai: Không phân giải số hiệu cổng thành tên dịch vụ.
+  * `icmp`: Biểu thức lọc gói BPF (Berkeley Packet Filter), chỉ lưu lại các gói tin thuộc giao thức ICMP, bỏ qua toàn bộ gói tin hệ thống khác như ARP, STP.
 
-#### Bước 4: Phát động tấn công từ Laptop 2
-Tại **Laptop 2**, sinh viên gõ lệnh kích hoạt tấn công Smurf:
+#### Bước 4: Phát động tấn công Smurf từ Laptop 2
+Tại terminal của **Laptop 2**, sinh viên kích hoạt script tấn công:
 ```bash
 sudo ip netns exec atk python3 smurf_attack.py
 ```
+* **Bóc tách cơ chế bên trong mã nguồn `smurf_attack.py`:**
+  * Script gọi hàm Scapy:
+    ```python
+    send(IP(src="10.0.0.200", dst="10.0.0.255")/ICMP(), count=10, verbose=0)
+    ```
+  * Gửi đi đúng 10 gói tin ICMP Echo Request.
+  * Địa chỉ nguồn `src="10.0.0.200"` (bị giả mạo thành địa chỉ của Nạn nhân).
+  * Địa chỉ đích `dst="10.0.0.255"` (địa chỉ Broadcast toàn bộ dải mạng LAN ảo).
+  * Cả 10 gói tin được card `atk0` bọc vào UDP 4789, phóng qua sóng Wi-Fi sang Laptop 1.
 
-#### Bước 5: Thuyết minh hiện tượng trước mặt Giảng viên:
-* **Trên màn hình Laptop 2:** Gửi đi 10 gói tin mang IP nguồn giả mạo là `10.0.0.200` tới địa chỉ broadcast `10.0.0.255`. Gói tin được đóng gói bay qua sóng Wi-Fi sang Laptop 1.
-* **Trên màn hình Laptop 1:** Cửa sổ `tcpdump` của Nạn nhân lập tức cuộn trào **30 gói tin Reply dội về tới tấp** từ 3 trạm khuếch đại `.11`, `.12`, `.13`!
-* **Dọn dẹp sau khi demo xong:** Trên cả 2 máy gõ `sudo bash clean_2pc.sh`.
+#### Bước 5: Thuyết minh hiện tượng đối sánh thực tế trước Giảng viên
+* **Tại màn hình Laptop 2 (Attacker):** Thông báo hoàn thành gửi đi 10 gói tin ping broadcast giả mạo. Băng thông kẻ tấn công tiêu tốn chỉ vỏn vẹn vài trăm bytes.
+* **Tại màn hình Laptop 1 (Victim):** Cửa sổ `tcpdump` của Nạn nhân ngay tức khắc cuộn trào **30 gói tin ICMP Echo Reply dội về liên tục** từ 3 địa chỉ máy trạm khác nhau:
+  * 10 gói dội về từ `10.0.0.11` (`amp1`)
+  * 10 gói dội về từ `10.0.0.12` (`amp2`)
+  * 10 gói dội về từ `10.0.0.13` (`amp3`)
+  $$\text{Hệ số khuếch đại thực nghiệm} = \frac{30 \text{ gói nhận được}}{10 \text{ gói gửi đi}} = \mathbf{3\times}$$
+
+#### Bước 6: Biểu diễn phòng thủ trực tiếp và dọn dẹp
+* **Phòng thủ ngay trên Laptop 1:** Nhấn `Ctrl+C` tại terminal của nạn nhân, cấu hình 3 máy khuếch đại bỏ qua broadcast:
+  ```bash
+  for h in amp1 amp2 amp3; do sudo ip netns exec $h sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1; done
+  sudo ip netns exec vic tcpdump -i vic0 -nn icmp
+  ```
+* **Chạy lại tấn công từ Laptop 2:**
+  ```bash
+  sudo ip netns exec atk python3 smurf_attack.py
+  ```
+  *Màn hình `tcpdump` bên Laptop 1 hoàn toàn im ắng, không còn bất kỳ gói Reply nào dội về! Chứng minh phòng thủ thành công 100%.*
+* **Dọn dẹp môi trường sau buổi bảo vệ:** Trên cả 2 Laptop, chạy lệnh:
+  ```bash
+  sudo bash clean_2pc.sh
+  ```
+  * **Bóc tách lệnh dọn dẹp:** Script tự động xóa bỏ đường hầm `vxlan0`, xóa switch `br0` và xóa toàn bộ các Network Namespaces, khôi phục hệ thống về trạng thái ban đầu sạch sẽ.
 
 ---
 
-### 3. Lời thoại mẫu khi 2 sinh viên thuyết trình trên 2 Laptop:
-* **Sinh viên 1 (đứng bên Laptop 1):** *"Thưa thầy, trên Laptop 1 em đóng vai hệ thống mạng của tổ chức, gồm máy chủ nạn nhân vic và 3 trạm máy trạm amp1, amp2, amp3 kết nối qua Switch ảo. Em đang bật tcpdump để theo dõi lưu lượng mạng của nạn nhân."*
-* **Sinh viên 2 (đứng bên Laptop 2):** *"Còn em ở Laptop 2 đóng vai kẻ tấn công ngồi từ xa kết nối qua mạng Wi-Fi. Bây giờ em sẽ bấm Enter chạy script `smurf_attack.py` để phát 10 gói ping broadcast giả mạo IP của bạn..."*
-* **Sinh viên 1 (chỉ vào màn hình Laptop 1):** *"Thầy hãy nhìn sang màn hình Laptop 1 của em: Ngay khi bạn vừa bấm Enter, 3 trạm máy trạm trên máy em đã bị lừa và đồng loạt dội ngược 30 gói tin phản hồi về máy nạn nhân của em, làm nghẽn toàn bộ băng thông mạng! Cuộc tấn công khuếch đại Smurf giữa 2 máy laptop vật lý đã thành công trọn vẹn!"*
+### 4. Kịch bản lời thoại phối hợp giữa 2 sinh viên khi thuyết trình:
+* **Sinh viên 1 (đứng cạnh Laptop 1):**  
+  *"Thưa thầy, trên Laptop 1 của em đang mô phỏng toàn bộ hạ tầng mạng máy chủ nội bộ của một tổ chức. Em sử dụng Linux Bridge `br0` làm Switch ảo kết nối máy chủ nạn nhân `vic` (`10.0.0.200`) và 3 máy trạm trung gian `amp1`, `amp2`, `amp3`. Hiện tại em đang bật `tcpdump` với cờ `-nn icmp` để giám sát toàn bộ lưu lượng ICMP tới máy nạn nhân."*
+* **Sinh viên 2 (đứng cạnh Laptop 2):**  
+  *"Còn ở Laptop 2, em đóng vai kẻ tấn công ngồi từ một vị trí vật lý xa xôi kết nối qua mạng Wi-Fi. Do mạng Wi-Fi thực tế ngăn chặn các gói tin broadcast và chặn IP giả mạo, nhóm chúng em đã ứng dụng công nghệ đường hầm VXLAN theo chuẩn RFC 7348 để đóng gói toàn bộ Frame Tầng 2 vào các gói tin UDP cổng 4789, đưa kẻ tấn công hòa nhập thông suốt vào mạng LAN ảo của Laptop 1. Bây giờ em xin phép bấm Enter chạy file `smurf_attack.py` để gửi 10 gói ping broadcast giả mạo..."*
+* **Sinh viên 1 (chỉ tay vào màn hình Laptop 1):**  
+  *"Thầy hãy nhìn sang màn hình Laptop 1 của em: Ngay khi bạn bấm Enter, màn hình của em lập tức bùng nổ 30 gói tin Reply dội về máy nạn nhân từ cả 3 trạm khuếch đại! Kẻ tấn công chỉ tốn 10 gói tin nhỏ nhưng đã bắt ép hệ thống mạng nội bộ của em phải tự triệt tiêu băng thông của chính mình với hệ số khuếch đại gấp 3 lần. Cuộc tấn công Smurf thực chiến giữa 2 Laptop vật lý độc lập đã thành công mỹ mãn!"*
 
 
