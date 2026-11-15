@@ -21,7 +21,9 @@ def handle(p):
             received_chunks = []
 
         # Kiem tra tin hieu bao ket thuc truyen file
-        if data == b"__EOF__":
+        # Luu y: Do chuan Ethernet quy dinh khung toi thieu 64 bytes (payload toi thieu 18 bytes),
+        # chuoi b"__EOF__" (7 bytes) khi truyen qua card mang se bi tu dong dem them 11 byte 0 (\x00).
+        if data == b"__EOF__" or data.startswith(b"__EOF__"):
             full_data = b"".join(received_chunks)
             print("\n" + "="*66)
             print("[+] DA NHAN DU TOAN BO CAC MANH! TIEN HANH GHEP DU LIEU HOAN CHINH:")

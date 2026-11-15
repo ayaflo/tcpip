@@ -109,3 +109,4 @@ Trước khi thực hành bất kỳ bài lab nào, hãy thực hiện 2 bước
 | **Lab 05 (ICMP Redirect qua VXLAN)** | `sudo bash setup_lab5_2pc.sh host <IP_M1>`<br>*(Quan sát routing và ping từ victim)*:<br>`sudo ip netns exec vic ip route`<br>`sudo ip netns exec vic ping 10.0.1.5` | `sudo bash setup_lab5_2pc.sh attacker <IP_M2>`<br>*(Bắn Redirect bẻ lái & lắng nghe)*:<br>`sudo ip netns exec atk python3 redirect_attack.py 10.0.0.2 10.0.0.1 10.0.0.66 10.0.1.5 atk0` |
 | **Lab 06 (Teardrop Attack)** | `netstat -s \| grep -i -E "reassembl\|fragments"`<br>`sudo tcpdump -i eth0 -nn -v 'ip[6:2] & 0x3fff != 0'` | `sudo python3 teardrop_attack.py <IP_M2> eth0`<br>`ping -c 3 <IP_M2>` |
 | **Lab 07 (DNSSEC Validation)** | `sudo systemctl stop systemd-resolved`<br>`sudo bash setup_dnssec_configs_real.sh <IP_M2>`<br>`named -c /etc/bind/named-auth.conf -g &`<br>`bash setup_unbound_real.sh <IP_M2>`<br>`unbound -c /etc/unbound/unbound.conf -d &` | `dig @<IP_M2> www.lab.test +dnssec` |
+

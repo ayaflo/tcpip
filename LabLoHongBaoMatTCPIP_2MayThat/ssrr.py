@@ -42,7 +42,7 @@ sniffer.start()
 time.sleep(0.3)
 
 print(f"\n[*] Dang gui goi tin ICMP co tuy chon SSRR toi {victim_ip}...")
-send(pkt, iface=iface, verbose=0)
+send(pkt, verbose=0)
 
 sniffer.join()
 if sniffer.results:
