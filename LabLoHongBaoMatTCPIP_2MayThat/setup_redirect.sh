@@ -51,13 +51,16 @@ ip netns exec vic ip route add default via 10.0.0.1
 ip netns exec dst ip route add default via 10.0.1.254
 
 echo "[*] 6. Mo lo hong tren Victim (chap nhan goi ICMP Redirect)..."
-for k in all vic0; do
+for k in all default vic0; do
     ip netns exec vic sysctl -w net.ipv4.conf.$k.accept_redirects=1 >/dev/null 2>&1
     ip netns exec vic sysctl -w net.ipv4.conf.$k.secure_redirects=0 >/dev/null 2>&1
 done
+ip netns exec vic sysctl -w net.ipv4.ip_forward=0 >/dev/null 2>&1
+ip netns exec vic ip route flush cache >/dev/null 2>&1
 
-# Cho phep atk chuyen tiep goi tin (de lam MITM day du neu can)
+# Cho phep atk chuyen tiep goi tin va nap default route de lam Transparent MITM
 ip netns exec atk sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+ip netns exec atk ip route add default via 10.0.0.1 dev atk0 >/dev/null 2>&1
 
 echo ""
 echo "=================================================================="

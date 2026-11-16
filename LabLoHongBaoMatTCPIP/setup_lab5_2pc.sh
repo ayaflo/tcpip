@@ -84,10 +84,12 @@ if [ "$ROLE" == "host" ]; then
     ip netns exec dst ip route add default via 10.0.1.254
 
     # Mo lo hong tren Victim (chap nhan ICMP Redirect)
-    for k in all vic0; do
+    for k in all default vic0; do
         ip netns exec vic sysctl -w net.ipv4.conf.$k.accept_redirects=1 >/dev/null 2>&1
         ip netns exec vic sysctl -w net.ipv4.conf.$k.secure_redirects=0 >/dev/null 2>&1
     done
+    ip netns exec vic sysctl -w net.ipv4.ip_forward=0 >/dev/null 2>&1
+    ip netns exec vic ip route flush cache >/dev/null 2>&1
 
     # 3. Tao duong ham VXLAN noi br0 sang Laptop 2 qua Wi-Fi
     echo "[*] Dang tao duong ham VXLAN noi toi Laptop 2 ($REMOTE_IP)..."
@@ -131,6 +133,8 @@ elif [ "$ROLE" == "attacker" ]; then
     ip netns exec atk ip link set atk0 up
     ip netns exec atk ip link set lo up
     ip netns exec atk sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+    # Thiet lap default route qua Gateway 10.0.0.1 de Attacker chuyen tiep goi tin (Transparent MITM)
+    ip netns exec atk ip route add default via 10.0.0.1 dev atk0 >/dev/null 2>&1
 
     echo ""
     echo "=================================================================="

