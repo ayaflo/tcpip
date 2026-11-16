@@ -246,19 +246,37 @@ Liếc nhìn sang terminal của Attacker đang chạy lệnh `tcpdump -i atk0 -
 ---
 
 ### Bước 7: Kích hoạt cơ chế phòng thủ (Mitigation)
-Tại terminal máy Nạn nhân (`vic`), bật cấu hình chặn gói tin ICMP Redirect và xóa bộ đệm:
+Tại terminal máy Nạn nhân (`vic`), thực thi lệnh vô hiệu hóa nhận ICMP Redirect và xóa bộ đệm định tuyến:
 ```bash
-for k in all vic0; do
+for k in all default vic0; do
     sysctl -w net.ipv4.conf.$k.accept_redirects=0
 done
 ip route flush cache
 ```
-* **Kiểm tra lại đường đi**:
+
+#### Bóc tách chi tiết từng tham số & cơ chế ngăn chặn:
+* `for k in all default vic0; do ... done`: Vòng lặp duyệt qua 3 phạm vi cấu hình card mạng của Linux:
+  * `all`: Áp dụng cho toàn bộ các giao diện mạng hiện có trong không gian mạng máy Nạn nhân.
+  * `default`: Thiết lập giá trị mặc định cho bất kỳ card mạng ảo mới nào được tạo sau này.
+  * `vic0`: Áp dụng đích danh lên card mạng `vic0` (nơi đang tiếp nhận các gói tin từ mạng LAN).
+* `sysctl -w`: (Write) Ghi đè tham số trực tiếp vào nhân Linux (Kernel) ngay lập tức tại runtime mà không cần khởi động lại máy.
+* `net.ipv4.conf.$k.accept_redirects=0`: 
+  * Tham số cốt lõi: `= 0` có nghĩa là **VÔ HIỆU HÓA hoàn toàn tính năng chấp nhận gói tin ICMP Redirect**.
+  * **Cơ chế tầng Kernel:** Khi giá trị này bằng `0`, hễ có bất kỳ gói tin ICMP Type 5 (Redirect) nào bay tới, nhân Linux sẽ âm thầm tiêu hủy (DROP) gói tin ngay tại Tầng 3 (Network Layer). Kernel từ chối gọi hàm `ipv4_redirect()`, khiến kẻ tấn công không thể can thiệp vào bảng ngoại lệ định tuyến (FIB Nexthop Exceptions - FNHE).
+* `ip route flush cache`: Lệnh xóa sạch toàn bộ bộ nhớ tạm (Cache) của bảng định tuyến. Thao tác này ngay lập tức xóa bỏ mục `<redirected>` cũ do Attacker tạo ra, đưa máy Nạn nhân trở lại sử dụng Gateway hợp pháp `10.0.0.1`.
+
+* **Kiểm tra lại tuyến đường trên máy Nạn nhân**:
   ```bash
   ip route get 10.0.1.5
   ```
-  * Kết quả: Trở lại bình thường: `10.0.1.5 via 10.0.0.1 dev vic0`.
-* Cho Attacker phát lại gói Redirect: Bảng định tuyến của Victim **vẫn trơ trơ giữ nguyên `10.0.0.1`**, chứng minh cơ chế phòng thủ hoạt động hiệu quả 100%.
+  * **Kết quả**: Tuyến đường trở lại bình thường:
+    ```text
+    10.0.1.5 via 10.0.0.1 dev vic0 src 10.0.0.2 uid 0
+    ```
+    *(Cờ `<redirected>` và địa chỉ `10.0.0.66` đã biến mất hoàn toàn).*
+* **Kiểm chứng tính miễn nhiễm:** Cho máy Attacker phát lại script `icmp_redirect.py`:
+  * Bảng định tuyến của Victim **vẫn trơ trơ giữ nguyên `via 10.0.0.1`**.
+  * Nạn nhân ping `10.0.1.5`: Gói tin đi thẳng qua Gateway chuẩn `10.0.0.1`, Attacker hoàn toàn không bắt được gì trên `tcpdump` nữa. Chứng minh cơ chế phòng thủ hoạt động hiệu quả 100%!
 
 ---
 
@@ -511,7 +529,57 @@ Tại **Laptop 1**, sinh viên gửi 3 gói ping tới máy chủ đích:
 sudo ip netns exec vic ping -c 3 10.0.1.5
 ```
 * **Mời Giảng viên nhìn sang màn hình Laptop 2:** Màn hình `tcpdump` của Laptop 2 lập tức bắt trọn vẹn cả 3 gói ping bay sang qua sóng Wi-Fi! Kẻ tấn công đứng ở laptop bên cạnh đã hoàn toàn chiếm được vị trí trung gian Man-in-the-Middle!
-* **Dọn dẹp sau khi demo xong:** Trên cả 2 máy gõ `sudo bash clean_2pc.sh`.
+
+#### Bước 7: Kích hoạt cơ chế phòng thủ ngăn chặn & Kiểm chứng trực tiếp
+Để chặn đứng hoàn toàn cuộc tấn công ICMP Redirect, tại terminal của **Laptop 1** (Máy Nạn nhân), sinh viên gõ lệnh tắt nhận Redirect và xóa sạch bộ đệm định tuyến:
+```bash
+for k in all default vic0; do sudo ip netns exec vic sysctl -w net.ipv4.conf.$k.accept_redirects=0; done
+sudo ip netns exec vic ip route flush cache
+```
+
+##### Bóc tách chi tiết từng câu lệnh & từng tham số phòng thủ:
+* `for k in all default vic0; do ... done`: Vòng lặp duyệt qua 3 cấp độ cấu hình card mạng:
+  * `all`: Áp dụng cho toàn bộ các giao diện mạng trong không gian mạng của máy `vic`.
+  * `default`: Thiết lập giá trị mặc định cho bất kỳ card mạng ảo mới nào được sinh ra sau này.
+  * `vic0`: Áp dụng đích danh lên card mạng `vic0` (card đang nối trực tiếp vào Switch ảo và nhận gói tin).
+* `sudo ip netns exec vic`: Thực thi câu lệnh với đặc quyền quản trị cao nhất (root) bên trong không gian mạng của máy Nạn nhân `vic`.
+* `sysctl -w`: (Write) Ghi đè tham số trực tiếp vào nhân Linux (Kernel) ngay lập tức tại thời điểm chạy (runtime) mà không cần khởi động lại máy.
+* `net.ipv4.conf.$k.accept_redirects=0`:
+  * **Tham số cốt lõi:** Thiết lập `= 0` có nghĩa là **TẮT / VÔ HIỆU HÓA hoàn toàn việc chấp nhận gói tin ICMP Redirect**.
+  * **Cơ chế phòng thủ ở Tầng 3 (Network Layer):** Khi giá trị này bằng `0`, bất kỳ gói tin ICMP Type 5 nào gửi tới sẽ bị nhân Linux âm thầm tiêu hủy (DROP) ngay lập tức. Kernel từ chối gọi hàm `ipv4_redirect()`, khiến kẻ tấn công không thể can thiệp hay bẻ lái bảng định tuyến của máy nạn nhân.
+* `sudo ip netns exec vic ip route flush cache`: Lệnh xóa sạch (Flush) toàn bộ các mục nhớ tạm thời trong bộ đệm định tuyến (Route Cache). Thao tác này ngay lập tức xóa bỏ tuyến đường giả mạo `<redirected>` cũ đang còn lưu trữ, đưa máy tính trở về sử dụng Default Gateway hợp pháp ban đầu (`10.0.0.1`).
+
+##### Kiểm tra và đối sánh kết quả phòng thủ:
+1. **Kiểm tra lại định tuyến trên Laptop 1:**
+   ```bash
+   sudo ip netns exec vic ip route get 10.0.1.5
+   ```
+   * **Kết quả quan sát:**
+     ```text
+     10.0.1.5 via 10.0.0.1 dev vic0 src 10.0.0.2 uid 0
+     ```
+     *(Tuyến đường lập tức trở về Gateway hợp pháp `10.0.0.1`, cờ `<redirected>` và địa chỉ của Laptop 2 `10.0.0.66` đã biến mất hoàn toàn!)*
+2. **Kẻ tấn công chạy lại script tấn công trên Laptop 2:**
+   ```bash
+   sudo ip netns exec atk python3 icmp_redirect.py
+   ```
+3. **Kiểm tra lại trên Laptop 1:**
+   ```bash
+   sudo ip netns exec vic ip route get 10.0.1.5
+   ```
+   * **Kết quả:** Bảng định tuyến của Victim **vẫn trơ trơ giữ nguyên `via 10.0.0.1`**! Kẻ tấn công hoàn toàn bất lực, không thể bẻ cong tuyến đường được nữa.
+4. **Nạn nhân gửi lại lưu lượng ping:**
+   ```bash
+   sudo ip netns exec vic ping -c 3 10.0.1.5
+   ```
+   * Gói tin đi thẳng qua Gateway chuẩn `10.0.0.1`.
+   * Cửa sổ `tcpdump` của Laptop 2 hoàn toàn im lặng, không bắt được bất kỳ gói tin nào nữa. Cuộc tấn công Man-in-the-Middle đã bị bẻ gãy và phòng thủ thành công 100%!
+
+#### Bước 8: Dọn dẹp sau khi demo xong
+Trên cả 2 Laptop, chạy script dọn dẹp để khôi phục hạ tầng mạng về trạng thái sạch sẽ ban đầu:
+```bash
+sudo bash clean_2pc.sh
+```
 
 ---
 
@@ -519,6 +587,8 @@ sudo ip netns exec vic ping -c 3 10.0.1.5
 * **Sinh viên 1 (đứng bên Laptop 1):** *"Thưa thầy, trên Laptop 1 em đóng vai máy tính nạn nhân vic và Gateway hợp pháp gw. Ban đầu em kiểm tra lệnh `ip route get 10.0.1.5`, tuyến đường hiển thị rõ ràng là đi qua Gateway chuẩn 10.0.0.1."*
 * **Sinh viên 2 (đứng bên Laptop 2):** *"Còn em ở Laptop 2 đóng vai kẻ tấn công ngồi cùng quán cà phê kết nối Wi-Fi. Em đang bật sẵn `tcpdump` trên card mạng của mình để chờ hứng gói tin. Bây giờ em sẽ bấm Enter chạy script `icmp_redirect.py` để gửi gói tin giả mạo Router Gateway điều hướng nạn nhân sang máy em..."*
 * **Sinh viên 1 (chỉ vào màn hình Laptop 1):** *"Em vừa kiểm tra lại bảng định tuyến: Tuyến đường trên máy em lập tức xuất hiện cờ `<redirected>` và Gateway đã bị bẻ lái hoàn toàn sang IP của bạn ở Laptop 2! Bây giờ em gõ lệnh ping tới máy chủ đích 10.0.1.5..."*
-* **Sinh viên 2 (chỉ vào màn hình Laptop 2):** *"Thầy hãy nhìn sang màn hình Laptop 2 của em: Toàn bộ các gói tin ping mà bạn gửi đi đã bị chuyển hướng bay thẳng sang card mạng máy em! Cuộc tấn công Man-in-the-Middle giữa 2 máy laptop vật lý đã thành công 100%!"*
+* **Sinh viên 2 (chỉ vào màn hình Laptop 2):** *"Thầy hãy nhìn sang màn hình Laptop 2 của em: Toàn bộ các gói tin ping mà bạn gửi đi đã bị chuyển hướng bay thẳng sang card mạng máy em! Kẻ tấn công đã hoàn toàn chiếm quyền trung gian Man-in-the-Middle giữa 2 máy laptop vật lý!"*
+* **Sinh viên 1 (thao tác lệnh phòng thủ trên Laptop 1):** *"Bây giờ em sẽ thực hiện phương án phòng thủ bằng cách chạy lệnh `sysctl -w net.ipv4.conf.all.accept_redirects=0` để cấm hoàn toàn nhân Linux chấp nhận các gói tin ICMP Redirect, đồng thời dùng `ip route flush cache` để xóa sạch tuyến đường bị lừa. Thầy nhìn xem: Tuyến đường trên máy em lập tức trở về Gateway hợp pháp 10.0.0.1!"*
+* **Sinh viên 2 (chạy lại script trên Laptop 2):** *"Em ở Laptop 2 dù có tiếp tục bắn thêm hàng loạt gói tin ICMP Redirect thì nhân Linux trên máy bạn đã âm thầm tiêu hủy các gói tin này ngay tại Kernel. Em không còn bắt được bất kỳ lưu lượng nào của bạn nữa! Hệ thống đã được bảo vệ an toàn tuyệt đối!"*
 
 
